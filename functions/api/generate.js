@@ -1,333 +1,21 @@
-// functions/api/generate.js — T-730/SPEC-430 · SPEC-433/T-733 v4 异步 job 流（方案 b）
-// POST /api/generate {image_base64, mime} → 200 {job_id}：校验/quota 语义与 v3 一致，立即返回；
-// 生成在 context.waitUntil 后台执行（runJob），终态写 KV job:<id>；前端轮询 GET /api/result?job=<id>（result.js）。
-// waitUntil 两种形状：Pages Functions 生产为顶层 waitUntil（无 ctx 字段）；Workers 为 ctx.waitUntil（见调度块注释）。
-// 依据：本账号 DashScope 多模态生成不支持异步任务（探针 403 AccessDenied "current user api does not
-// support asynchronous calls"），同步出图 2-4min 超 CF 边缘 100s → 524；waitUntil 不受边缘响应超时约束。
-// 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / key 不出 worker。
-// 纯函数 + runGeneration/runJob/job helpers export 供 node --test；env.__fetch 可覆写 fetch 供 mock。
-// quota 恰好一次：仅生成成功扣费一次（counted 标记落 job 值）；重复 poll 走 result.js 纯 KV 读，不扣费。
-
-export const MODEL = 'qwen-image-3.0-pro';
-export const UPSTREAM_URL =
-  'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
-export const MIME_ALLOW = ['image/jpeg', 'image/png', 'image/webp'];
-export const MAX_B64_LEN = 14_000_000; // base64 chars ≈ 10.5 MB binary
-
-// SPEC-431 W6: per-IP daily limit — KV binding BOTU_RL, key rl:<ip>:<UTC yyyymmdd>, TTL 48h.
-// binding 缺失或 KV 读/写异常一律 fail-open（视为可生成），错误只记 console.error。
-export const DAILY_LIMIT = 5;
-export const RL_TTL = 172800;
-
-export function utcDay(d = new Date()) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`;
-}
-
-export function rlKey(ip, day) {
-  return `rl:${ip}:${day}`;
-}
-
-export function clientIp(request) {
-  return request.headers.get('CF-Connecting-IP') || 'unknown';
-}
-
-export async function rlReadCount(env, ip) {
-  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.get !== 'function') return 0; // fail-open
-  try {
-    const n = parseInt(await env.BOTU_RL.get(rlKey(ip, utcDay())), 10);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  } catch (e) {
-    console.error('rl read failed (fail-open):', String(e).slice(0, 200));
-    return 0;
-  }
-}
-
-export async function rlWrite(env, ip, n) {
-  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.put !== 'function') return; // fail-open
-  try {
-    await env.BOTU_RL.put(rlKey(ip, utcDay()), String(n), { expirationTtl: RL_TTL });
-  } catch (e) {
-    console.error('rl write failed (fail-open):', String(e).slice(0, 200));
-  }
-}
-// SPEC-433 W2: job 流 — 同一 binding，key job:<id>，TTL 1h。
-// job 存储异常不 fail-open（无 job 即无法轮询，POST 直接 500）；quota 读/写仍 fail-open。
-export const JOB_TTL = 3600;
-
-export function jobKey(id) {
-  return `job:${id}`;
-}
-
-// job id: webcrypto 随机 32 hex
-export function newJobId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-// job 值 JSON 序列化存取：读 missing/损坏/异常一律 null；写异常 false（调用方决定语义）
-export async function jobRead(env, id) {
-  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.get !== 'function') return null;
-  try {
-    const raw = await env.BOTU_RL.get(jobKey(id));
-    if (!raw) return null;
-    const v = JSON.parse(raw);
-    return v && typeof v === 'object' ? v : null;
-  } catch (e) {
-    console.error('job read failed:', String(e).slice(0, 200));
-    return null;
-  }
-}
-
-export async function jobWrite(env, id, val) {
-  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.put !== 'function') return false;
-  try {
-    await env.BOTU_RL.put(jobKey(id), JSON.stringify(val), { expirationTtl: JOB_TTL });
-    return true;
-  } catch (e) {
-    console.error('job write failed:', String(e).slice(0, 200));
-    return false;
-  }
-}
-
-// 错误脱敏：剥 URL / 凭证样 token / 上游域名，截断 200 字符 — 任何响应与 job 值不得泄漏上游细节
-export function sanitizeError(msg) {
-  return String(msg == null ? '' : msg)
-    .replace(/https?:\/\/\S+/gi, '[url]')
-    .replace(/sk-[A-Za-z0-9_-]+/gi, '[redacted]')
-    .replace(/Signature=[^\s&"']*/gi, '[redacted]')
-    .replace(/x-oss-[A-Za-z0-9_-]+/gi, '[redacted]')
-    .replace(/dashscope/gi, '[upstream]')
-    .slice(0, 200);
-}
-
-export const ICON_PROMPT = `[목표]
-
-사용자가 제공한 이미지 속 인물 또는 캐릭터를 검은 캡슐 눈을 가진 미니멀 2D 봇 아이콘 한 장으로 재해석한다.
-
-원본에서 대상을 알아보는 데 필요한 외형적 특징을 가져오고, 얼굴 구조·눈·표정·구도·채색은 아래 규격을 따른다. 이 지침에서 Grok bot icon은 이 시각 규격을 가리킨다.
-
-[원본에서 가져올 정보]
-
-변환 대상의 피부톤 또는 얼굴 표면의 기본색, 머리색과 헤어 실루엣을 확인한다. 머리카락의 길이, 가르마, 곱슬기, 대표적인 앞머리와 묶음 형태는 원본을 기준으로 정한다.
-
-특징적인 귀, 모자, 안경, 수염, 장식, 기계 부품 중 식별에 필요한 요소를 선택한다. 기본색은 유지하고, 형태로 보존할 핵심 특징은 최대 세 가지 정도로 추린다. 작은 디테일보다는 큰 실루엣을 우선한다.
-
-피부색과 머리색을 특정 색으로 통일하지 않는다. 머리카락이 없거나 가려져 있다면 그 상태를 유지하며, 원본에 없는 앞머리·장신구·기계 부품을 추가하지 않는다.
-
-원본의 표정과 사실적인 얼굴 구조는 복사하지 않는다. 복잡한 의상과 장비는 식별에 필요한 부분만 남긴다.
-
-별도의 스타일 참고 이미지가 있더라도 캐릭터의 외형 정보는 변환 대상에서만 가져온다. 스타일 참고 이미지 속 피부색·머리색·헤어스타일·장식을 옮기지 않는다.
-
-[얼굴]
-
-크고 둥근 봇 얼굴에 단순화된 머리카락과 식별 특징을 결합한다. 귀여움은 표정 장식보다 둥근 비율과 기울어진 구도로 표현한다.
-
-얼굴은 원본의 피부톤 또는 표면색을 바탕으로 넓고 매끈한 색면으로 그린다. 볼과 턱을 부드럽게 연결하고, 뾰족하거나 각진 턱과 사실적인 골격 묘사는 피한다.
-
-입과 코는 그리지 않는다. 웃는 입, 작은 점 형태의 입, 고양이 입도 넣지 않는다.
-
-양 볼에는 피부톤과 어울리는 낮은 채도의 옅은 타원형 홍조를 작게 넣는다. 홍조는 선이나 반짝임 없는 납작한 색면으로 표현한다.
-
-눈과 홍조 주변에는 충분한 빈 얼굴 면적을 남긴다. 안경이나 수염이 핵심 식별 특징이라면 최소한의 형태로 유지할 수 있다. 안경은 두 눈을 가리지 않게 하고, 수염은 입이나 사실적인 얼굴 구조를 묘사하는 방식으로 그리지 않는다.
-
-[눈]
-
-눈은 검은색에 가까운 단색 캡슐 도형 정확히 두 개로 그린다. 얼굴을 똑바로 세웠을 때 세로로 긴 막대이며 양 끝은 둥글다. 세로 길이는 가로 폭의 약 2.5~3배로 하고, 두 눈은 같은 크기로 서로 평행하게 배치한다.
-
-각 눈의 긴 축은 두 눈의 중심을 잇는 선과 직각을 이룬다. 이 배치를 유지하면서 [구도]에서 지정한 방향과 각도로 머리와 두 눈을 함께 기울인다. 가로로 누운 막대나 감은 눈 형태로 그리지 않는다.
-
-각 캡슐을 빈틈없는 한 가지 색으로 채운다. 이 도형 자체가 눈이므로 내부에 별도의 안구나 동공을 그리지 않는다.
-
-홍채, 흰자, 반사광, 반짝임, 그라데이션, 속눈썹, 눈꺼풀, 눈썹, 테두리 장식은 넣지 않는다. 숫자 1의 갈고리나 밑받침처럼 보이는 획도 없다.
-
-원본의 눈 모양과 눈 색보다 이 규격을 우선한다.
-
-[구도]
-
-1:1 정사각형 캔버스에 캐릭터 한 명을 배치한다. 얼굴과 머리카락 또는 머리의 외곽 형태를 매우 크게 확대하여 화면 대부분을 채운다.
-
-캐릭터가 화면 왼쪽 아래에서 고개를 기울여 들여다보는 구도다. 머리를 시계 방향으로 약 15~20도 기울여 화면 왼쪽 눈이 오른쪽 눈보다 조금 높게 보이게 한다. 얼굴, 두 눈, 머리카락과 부착된 장식은 같은 기울기를 따른다.
-
-머리의 왼쪽과 아래쪽 가장자리는 화면 경계에서 자연스럽게 잘린다. 턱은 화면 아래에 닿거나 일부가 화면 밖으로 나가며, 오른쪽 위에는 짙은 배경의 여백을 남긴다.
-
-두 눈은 앞머리나 장식에 가려지지 않고 온전히 보여야 한다. 머리 전체를 작게 넣는 정중앙 증명사진 구도나 좌우 대칭 구도는 피한다.
-
-몸통과 손은 그리지 않는다. 식별에 필요한 경우에만 목이나 옷깃의 작은 일부를 화면 아래에 남긴다. 얼굴 확대와 가장자리 크롭은 의도된 구성이다.
-
-[머리카락·장식·채색]
-
-머리카락은 잔가닥 대신 몇 개의 크고 매끈한 덩어리로 단순화한다. 원본의 앞머리 방향, 길이감과 전체 실루엣을 유지한다.
-
-외곽선이 거의 없는 색면 중심의 미니멀 2D 표현을 사용한다. 굵은 검은 윤곽선 대신 인접한 색면의 차이로 형태를 구분한다.
-
-원본의 대표색으로 플랫하고 부드럽게 채색한다. 기본색에 한 단계 정도의 넓고 약한 음영만 더하며, 머리카락 하이라이트가 필요하면 큰 색면 한두 개로 제한한다.
-
-장식과 기계 부품은 실루엣과 큰 연결부만 남긴다. 작은 나사, 배선, 회로, 촘촘한 패널선, 복잡한 문양은 생략한다.
-
-작은 프로필 아이콘으로 축소해도 검은 캡슐 눈 두 개와 원본의 핵심 실루엣이 즉시 읽혀야 한다.
-
-[배경과 제외 요소]
-
-배경은 캔버스 전체에 이어지는 거의 검은색의 짙은 차콜 단색으로 한다. 배경 사물과 패턴은 넣지 않는다.
-
-원형 프레임, 배지 테두리, 글자, 숫자, 로고, 워터마크, 말풍선, 감탄 표시, 글리터, 파티클, 빛 번짐, 렌즈 플레어는 제외한다.
-
-실사, 3D 렌더, 유화 질감, 거친 스케치선, 과도한 광택, 복잡한 명암, 잔머리 묘사, 과밀한 장식은 피한다.
-
-[충돌 처리]
-
-규칙이 충돌하면 다음 순서를 따른다.
-
-1. 장식 없는 검은 캡슐 눈 두 개.
-2. 입과 코 없는 둥근 봇 얼굴.
-3. 두 눈이 온전히 보이는 기울어진 초근접 구도.
-4. 원본의 기본색과 핵심 식별 특징.
-5. 기타 세부 사항.
-
-앞머리가 눈을 가리면 대표적인 흐름을 유지하면서 길이·폭·위치를 조정한다. 핵심 장식이 크롭으로 완전히 사라지면 알아볼 수 있는 부분이 남도록 크기와 위치를 소폭 조정한다. 이 과정에서 원본에 없는 특징을 만들어내지 않는다.
-
-[실행과 후속 수정]
-
-사용자가 생성 또는 변환을 요청하면 설명이나 문구 없이 실제로 생성한 완성 아이콘 한 장으로 응답한다. 변환할 이미지 한 장만 첨부하고 별도의 질문을 하지 않았다면 기본 변환 요청으로 처리한다.
-
-변환 대상 이미지를 확인할 수 없다면 첨부를 요청한다. 이미지에 여러 인물이 있고 대상이 지정되지 않았다면 누구를 변환할지 확인한다.
-
-프롬프트 수정, 규칙 설명, 결과 분석 또는 사용법만 질문하면 글로 답하고 새 이미지를 생성하지 않는다. 제작 명세는 요청받았을 때만 글로 제공하며 이미지 안에는 넣지 않는다.
-
-후속 수정에서는 요청한 부분만 변경하고, 별도 변경 요청이 없는 스타일 규격과 캐릭터 특징은 유지한다.
-
-실제로 생성하거나 확인하지 않은 결과를 생성 완료 또는 검증 완료라고 설명하지 않는다.`;
-
-export function validateInput(body) {
-  if (!body || typeof body !== 'object') {
-    return { ok: false, status: 400, error: 'invalid request body' };
-  }
-  const { image_base64, mime } = body;
-  if (typeof image_base64 !== 'string' || image_base64.length === 0) {
-    return { ok: false, status: 400, error: 'image_base64 is required (non-empty string)' };
-  }
-  if (typeof mime !== 'string' || !MIME_ALLOW.includes(mime)) {
-    return { ok: false, status: 400, error: `mime must be one of: ${MIME_ALLOW.join(', ')}` };
-  }
-  if (image_base64.length > MAX_B64_LEN) {
-    return { ok: false, status: 413, error: 'image too large (base64 exceeds 14M chars)' };
-  }
-  return { ok: true, image_base64, mime };
-}
-
-export function buildBody(imageBase64, mime) {
-  return {
-    model: MODEL,
-    input: {
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { image: `data:${mime};base64,${imageBase64}` },
-            { text: ICON_PROMPT },
-          ],
-        },
-      ],
-    },
-    parameters: { size: '1024*1024' },
-  };
-}
-
-export function extractImage(data) {
-  const content = data?.output?.choices?.[0]?.message?.content;
-  if (!Array.isArray(content)) return null;
-  for (const it of content) {
-    if (it && typeof it === 'object' && typeof it.image === 'string' && it.image) return it.image;
-  }
-  return null;
-}
-
-export function bufToBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-  });
-}
-
-// SPEC-433: 完整生成管线（纯 I/O）；成功 {ok:true,image_base64,mime}，失败 {ok:false,status,error}
-export async function runGeneration(env, v) {
-  const doFetch = env.__fetch || fetch;
-  const key = env.DASHSCOPE_API_KEY;
-  if (!key) {
-    return { ok: false, status: 500, error: 'server misconfigured: missing DASHSCOPE_API_KEY' };
-  }
-
-  let upstreamRes;
-  try {
-    upstreamRes = await doFetch(UPSTREAM_URL, {
-      method: 'POST',
-      headers: { Authorization: ['Bear', 'er'].join('') + ' ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildBody(v.image_base64, v.mime)),
-    });
-  } catch (e) {
-    return { ok: false, status: 502, error: `upstream fetch failed: ${String(e).slice(0, 200)}` };
-  }
-
-  if (!upstreamRes.ok) {
-    const text = (await upstreamRes.text().catch(() => '')).slice(0, 400);
-    return { ok: false, status: 502, error: `upstream ${upstreamRes.status}: ${text}` };
-  }
-
-  let data;
-  try {
-    data = await upstreamRes.json();
-  } catch {
-    return { ok: false, status: 502, error: 'upstream returned non-JSON body' };
-  }
-
-  const imgUrl = extractImage(data);
-  if (!imgUrl) {
-    return { ok: false, status: 502, error: 'no image in upstream response' };
-  }
-
-  let imgRes;
-  try {
-    imgRes = await doFetch(imgUrl);
-  } catch (e) {
-    return { ok: false, status: 502, error: `image download failed: ${String(e).slice(0, 200)}` };
-  }
-  if (!imgRes.ok) {
-    return { ok: false, status: 502, error: `image download failed with ${imgRes.status}` };
-  }
-
-  const bytes = await imgRes.arrayBuffer();
-  return { ok: true, image_base64: bufToBase64(bytes), mime: 'image/png' };
-}
-
-// 后台 job：生成 → 写 KV 终态。成功先写 done（poller 立即可见）再计数 +1（counted 标记；
-// rlWrite fail-open：写失败=用户免费一次，与既有 quota 语义一致）。失败写 error（已脱敏），不扣。
-export async function runJob(env, job) {
-  const { jobId, ip, image_base64, mime } = job;
-  const r = await runGeneration(env, { image_base64, mime });
-  if (!r.ok) {
-    await jobWrite(env, jobId, { state: 'error', error: sanitizeError(r.error), ip });
-    return;
-  }
-  const next = (await rlReadCount(env, ip)) + 1;
-  await jobWrite(env, jobId, {
-    state: 'done', image_b64: r.image_base64, mime: r.mime,
-    remaining: Math.max(0, DAILY_LIMIT - next), counted: true, ip,
-  });
-  await rlWrite(env, ip, next);
-}
-
-export async function onRequestPost({ request, env, ctx, waitUntil }) {
+// functions/api/generate.js — T-730/SPEC-430 · SPEC-433/T-733 v4 · SPEC-435/T-736 v5
+// POST /api/generate {image_base64, mime} → 200 {job_id}：校验/quota 语义与 v3/v4 一致，立即返回。
+// v5：生成执行体迁入 companion worker DO alarm handler（worker/src/index.js JobRunner）——
+// CF waitUntil 在 invocation 结束 30s 后强制取消未 settle Promise（官方 runtime-apis/context 文档），
+// DashScope 同步出图 2-4min → v4 job 永远 pending（线上 4940b924… 22.5min/66 轮实证）。
+// 触发链：job:<id> pending → img:<id> KV（TTL 1h）→ stub.fetch（x-botu-job/x-botu-ip）→ setAlarm 立即。
+// 核心逻辑在 lib/jobcore.js（本文件 re-export：result.js/tests 既有 import 不变）。
+// Gateway 指令（Dale 2026-09-22 19:42）：出图走 api-llm gateway；Pages 侧只校验 LLM_GATEWAY_URL var，
+// LLM_SERVICE_TOKEN 只在 companion worker secret（生成不发生在 Pages invocation 内）。
+// 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / token 不出 worker。
+
+export * from '../../lib/jobcore.js';
+
+import {
+  DAILY_LIMIT, clientIp, rlReadCount, jobWrite, imgWrite, newJobId, validateInput,
+} from '../../lib/jobcore.js';
+
+export async function onRequestPost({ request, env }) {
   let body;
   try {
     body = await request.json();
@@ -338,30 +26,48 @@ export async function onRequestPost({ request, env, ctx, waitUntil }) {
   const v = validateInput(body);
   if (!v.ok) return json({ error: v.error }, v.status);
 
-  // SPEC-431 W6: 每 IP 日限 5 次 — 超限 429；扣费只在生成成功后（runJob 内）
+  // SPEC-431 W6: 每 IP 日限 5 次 — 超限 429；扣费只在生成成功后（DO alarm 内 runJob）
   const ip = clientIp(request);
   const rlCount = await rlReadCount(env, ip);
   if (rlCount >= DAILY_LIMIT) {
     return json({ error: `daily limit exceeded (${DAILY_LIMIT} per IP per day)`, remaining: 0 }, 429);
   }
 
-  const key = env.DASHSCOPE_API_KEY;
-  if (!key) return json({ error: 'server misconfigured: missing DASHSCOPE_API_KEY' }, 500);
+  // Gateway 指令（Dale 2026-09-22 19:42）：出图统一走 api-llm gateway；此处只验 URL var 存在
+  if (!env.LLM_GATEWAY_URL) return json({ error: 'server misconfigured: missing LLM_GATEWAY_URL' }, 500);
 
-  // SPEC-433 W2: 建 job 立即返回 — 生成在 waitUntil 内完成，规避 CF 边缘 100s 超时（524）
+  // SPEC-435 v5: 建 job 立即返回 — 生成在 companion worker DO alarm handler 内执行，
+  // 根治 waitUntil 30s 平台取消（spec §背景 3）。图片载荷走 KV img:<id>（TTL 1h）；
+  // 触发链 stub.fetch → handler 存 meta + setAlarm（立即）。KV/stub 失败 → 500（沿用既有分支语义）。
   const jobId = newJobId();
   const stored = await jobWrite(env, jobId, { state: 'pending', ip, created: Date.now() });
   if (!stored) return json({ error: 'job store unavailable' }, 500);
+  const imgStored = await imgWrite(env, jobId, { image_base64: v.image_base64, mime: v.mime });
+  if (!imgStored) return json({ error: 'job store unavailable' }, 500);
 
-  const run = runJob(env, { jobId, ip, image_base64: v.image_base64, mime: v.mime });
-  // SPEC-433 hotfix：Pages Functions 生产 context 是顶层 waitUntil、无 ctx 字段 —— wrangler 4.136.1
-  // templates/pages-template-worker.ts:141-162 构造 {request, functionPath, next, params, data,
-  // env, waitUntil, passThroughOnException}；Workers 形状才是 ctx.waitUntil。旧代码只认 ctx.waitUntil，
-  // 生产落入内联兜底 → 同步生成 2-4min 超 CF 边缘 100s → 524。调度：顶层优先 → ctx 兜底 → 皆无才内联。
-  if (typeof waitUntil === 'function') waitUntil(run);
-  else if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(run);
-  else await run; // 皆无（单测/本地）兜底：内联执行；响应仍只含 job_id
+  try {
+    const ns = env.JOB_RUNNER;
+    if (!ns || typeof ns.idFromName !== 'function' || typeof ns.get !== 'function') {
+      return json({ error: 'job dispatch unavailable' }, 500);
+    }
+    const stub = ns.get(ns.idFromName(`job-${jobId}`));
+    const res = await stub.fetch('https://job.internal/run', {
+      method: 'POST',
+      headers: { 'x-botu-job': jobId, 'x-botu-ip': ip },
+    });
+    if (!res || !res.ok) return json({ error: 'job dispatch unavailable' }, 500);
+  } catch (e) {
+    console.error('job dispatch failed:', String(e).slice(0, 200));
+    return json({ error: 'job dispatch unavailable' }, 500);
+  }
   return json({ job_id: jobId });
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
 }
 
 export async function onRequestGet() {

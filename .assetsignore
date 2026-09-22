@@ -1,0 +1,4 @@
+worker/
+lib/
+test/
+.assetsignore
