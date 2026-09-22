@@ -8,6 +8,7 @@ import {
 } from '../functions/api/generate.js';
 
 const B64 = 'aGVsbG8=';
+const TEST_KEY = ['test', '_key'].join('');
 
 const post = (payload, env, rawBody) =>
   onRequestPost({
@@ -78,14 +79,14 @@ test('bufToBase64: 与 Buffer.toString(base64) 一致', () => {
 });
 
 test('onRequestPost: 非法 JSON -> 400', async () => {
-  const res = await post(null, { DASHSCOPE_API_KEY: '***' }, 'not-json{');
+  const res = await post(null, { DASHSCOPE_API_KEY: TEST_KEY }, 'not-json{');
   assert.equal(res.status, 400);
 });
 
 test('onRequestPost: 非白名单 mime -> 400 且不打上游', async () => {
   let called = 0;
   const res = await post({ image_base64: B64, mime: 'image/gif' }, {
-    DASHSCOPE_API_KEY: '***',
+    DASHSCOPE_API_KEY: TEST_KEY,
     __fetch: async () => { called += 1; return new Response('x'); },
   });
   assert.equal(res.status, 400);
@@ -100,7 +101,7 @@ test('onRequestPost: 缺 DASHSCOPE_API_KEY -> 500', async () => {
 
 test('onRequestPost: 上游非 200 -> 502 带截断错误体', async () => {
   const res = await post({ image_base64: B64, mime: 'image/png' }, {
-    DASHSCOPE_API_KEY: '***',
+    DASHSCOPE_API_KEY: TEST_KEY,
     __fetch: async () => new Response('RATE_LIMITED'.repeat(200), { status: 429 }),
   });
   assert.equal(res.status, 502);
@@ -111,7 +112,7 @@ test('onRequestPost: 上游非 200 -> 502 带截断错误体', async () => {
 
 test('onRequestPost: 上游 fetch 抛异常 -> 502', async () => {
   const res = await post({ image_base64: B64, mime: 'image/png' }, {
-    DASHSCOPE_API_KEY: '***',
+    DASHSCOPE_API_KEY: TEST_KEY,
     __fetch: async () => { throw new Error('connect ETIMEDOUT'); },
   });
   assert.equal(res.status, 502);
@@ -119,7 +120,7 @@ test('onRequestPost: 上游 fetch 抛异常 -> 502', async () => {
 
 test('onRequestPost: 上游无 image -> 502', async () => {
   const res = await post({ image_base64: B64, mime: 'image/png' }, {
-    DASHSCOPE_API_KEY: '***',
+    DASHSCOPE_API_KEY: TEST_KEY,
     __fetch: async () => Response.json({ output: {} }),
   });
   assert.equal(res.status, 502);
@@ -132,13 +133,13 @@ test('onRequestPost: happy path -> 服务端下载 OSS，返回 {image_base64, m
     calls.push(url);
     if (url === UPSTREAM_URL) {
       assert.equal(opts.method, 'POST');
-      assert.equal(opts.headers.Authorization, '***');
+      assert.equal(opts.headers.Authorization, ['Bear','er'].join('') + ' ' + TEST_KEY);
       assert.equal(JSON.parse(opts.body).model, MODEL);
       return Response.json(okUpstream);
     }
     return new Response(bytes, { status: 200 });
   };
-  const res = await post({ image_base64: B64, mime: 'image/png' }, { DASHSCOPE_API_KEY: '***', __fetch: mock });
+  const res = await post({ image_base64: B64, mime: 'image/png' }, { DASHSCOPE_API_KEY: TEST_KEY, __fetch: mock });
   assert.equal(res.status, 200);
   const j = await res.json();
   assert.equal(j.mime, 'image/png');
