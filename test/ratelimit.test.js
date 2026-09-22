@@ -5,6 +5,7 @@ import {
   DAILY_LIMIT, RL_TTL, utcDay, rlKey, clientIp, rlReadCount, rlWrite,
   UPSTREAM_URL, onRequestPost,
 } from '../functions/api/generate.js';
+import { JobRunner } from '../worker/src/index.js';
 import { onRequest as quotaHandler, remainingOf } from '../functions/api/quota.js';
 
 const B64 = 'aGVsbG8=';
@@ -46,6 +47,46 @@ const post = (env, ip = IP) =>
     }),
     env,
   });
+
+// SPEC-435 v5：DO 触发链 mock（stub.fetch 直连真实 JobRunner；alarm 手动驱动）
+function mockDO(env) {
+  const instances = new Map();
+  const binding = {
+    idFromName: (name) => ({ name }),
+    get(id) {
+      if (!instances.has(id.name)) {
+        const data = new Map();
+        const st = {
+          data,
+          storage: {
+            async get(k) { return data.has(k) ? data.get(k) : null; },
+            async put(k, v) { data.set(k, v); },
+            async delete(k) { data.delete(k); },
+            async setAlarm() {},
+            async getAlarm() { return null; },
+            async deleteAll() { data.clear(); },
+          },
+        };
+        instances.set(id.name, new JobRunner(st, env));
+      }
+      const obj = instances.get(id.name);
+      return { fetch: (url, opts) => obj.fetch(new Request(url, opts)) };
+    },
+  };
+  return { binding, alarm: (name) => instances.get(name).alarm() };
+}
+
+// POST + alarm 全链（v5：扣费/终态在 alarm 内完成）
+async function postAndRun(env, ip = IP) {
+  const doMock = mockDO(env);
+  env.JOB_RUNNER = doMock.binding;
+  const res = await post(env, ip);
+  if (res.status === 200) {
+    const { job_id } = await res.clone().json();
+    await doMock.alarm(`job-${job_id}`);
+  }
+  return res;
+}
 
 const quotaGet = (env, method = 'GET', ip = IP) =>
   quotaHandler({
@@ -117,15 +158,15 @@ test('onRequestPost: 计数已达 5 → 429 JSON 且不打上游', async () => {
 
 test('onRequestPost: job 成功后计数 +1（含 TTL），key 用 CF-Connecting-IP', async () => {
   const kv = mockKV({ [KEY]: '2' });
-  const res = await post({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() });
+  const res = await postAndRun({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() });
   assert.equal(res.status, 200);
   const rlPuts = kv.puts.filter((x) => x.k === KEY);
   assert.deepEqual(rlPuts, [{ k: KEY, v: '3', opts: { expirationTtl: 172800 } }]);
 });
 
-test('onRequestPost: 上游失败 → job error，不计数', async () => {
+test('onRequestPost: 上游失败 → alarm 写 job error，不计数', async () => {
   const kv = mockKV({ [KEY]: '1' });
-  const res = await post({
+  const res = await postAndRun({
     DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding,
     __fetch: async () => new Response('boom', { status: 500 }),
   });
@@ -153,7 +194,7 @@ test('onRequestPost: KV 全挂 → quota fail-open 但 job 无法落盘 → 500�
 
 test('onRequestPost: 无 CF-Connecting-IP → key 用 unknown', async () => {
   const kv = mockKV();
-  const res = await post({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() }, null);
+  const res = await postAndRun({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() }, null);
   assert.equal(res.status, 200);
   assert.ok(kv.puts.some((x) => x.k === rlKey('unknown', today)));
 });

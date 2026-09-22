@@ -6,6 +6,7 @@ import {
   validateInput, buildBody, extractImage, bufToBase64,
   onRequestPost, onRequestGet, runGeneration, jobRead,
 } from '../functions/api/generate.js';
+import { JobRunner } from '../worker/src/index.js';
 
 const B64 = 'aGVsbG8=';
 const TEST_KEY = ['test', '_key'].join('');
@@ -33,6 +34,34 @@ const post = (payload, env, rawBody) =>
     }),
     env,
   });
+
+// SPEC-435 v5：DO 触发链 mock（stub.fetch 直连真实 JobRunner；alarm 手动驱动）
+function mockDO(env) {
+  const instances = new Map();
+  const binding = {
+    idFromName: (name) => ({ name }),
+    get(id) {
+      if (!instances.has(id.name)) {
+        const data = new Map();
+        const st = {
+          data,
+          storage: {
+            async get(k) { return data.has(k) ? data.get(k) : null; },
+            async put(k, v) { data.set(k, v); },
+            async delete(k) { data.delete(k); },
+            async setAlarm() {},
+            async getAlarm() { return null; },
+            async deleteAll() { data.clear(); },
+          },
+        };
+        instances.set(id.name, new JobRunner(st, env));
+      }
+      const obj = instances.get(id.name);
+      return { fetch: (url, opts) => obj.fetch(new Request(url, opts)) };
+    },
+  };
+  return { binding, alarm: (name) => instances.get(name).alarm() };
+}
 
 const okUpstream = {
   output: { choices: [{ message: { content: [{ text: 'done' }, { image: 'https://oss.example/gen.png?sig=9' }] } }] },
@@ -150,7 +179,7 @@ test('runGeneration: 缺 key -> {ok:false,500}', async () => {
   assert.equal(r.status, 500);
 });
 
-test('onRequestPost: happy path -> 200 {job_id}；job 终态 done 含图；服务端下载 OSS', async () => {
+test('onRequestPost: happy path -> 200 {job_id}；alarm 后终态 done 含图；服务端下载 OSS', async () => {
   const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
   const calls = [];
   const mock = async (url, opts) => {
@@ -164,13 +193,16 @@ test('onRequestPost: happy path -> 200 {job_id}；job 终态 done 含图；服�
     return new Response(bytes, { status: 200 });
   };
   const kv = mockKV();
-  const res = await post({ image_base64: B64, mime: 'image/png' }, {
-    DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mock,
-  });
+  const env = { DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mock };
+  const doMock = mockDO(env);
+  env.JOB_RUNNER = doMock.binding;
+  const res = await post({ image_base64: B64, mime: 'image/png' }, env);
   assert.equal(res.status, 200);
   const j = await res.json();
   assert.match(j.job_id, /^[0-9a-f]{32}$/);
   assert.deepEqual(Object.keys(j), ['job_id']); // 响应只有 job_id，无图/上游元数据
+  assert.deepEqual(calls, [], 'POST 阶段不打上游（v5：生成在 DO alarm 内）');
+  await doMock.alarm(`job-${j.job_id}`);
   assert.deepEqual(calls, [UPSTREAM_URL, extractImage(okUpstream)]);
   const job = await jobRead({ BOTU_RL: kv.binding }, j.job_id);
   assert.equal(job.state, 'done');
