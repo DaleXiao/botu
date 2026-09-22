@@ -1,7 +1,7 @@
 // app.js — T-730 站点接线：上传 → 压缩 → 预览 → 生成 → 结果/下载
 // loading 态：转圈 + 已等待秒数 + 轮换文案，明确提示 ~3-4 分钟
-import { DICT, detectLang, applyLang } from './i18n.js?v=430';
-import { compressImage, ACCEPT_MIME } from './upload.js?v=430';
+import { DICT, detectLang, applyLang } from './i18n.js?v=431';
+import { compressImage, ACCEPT_MIME } from './upload.js?v=431';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,6 +15,7 @@ const state = {
   kb: 0,
   previewUrl: null,
   busy: false,
+  remaining: null,
   timer: null,
   hintTimer: null,
   startedAt: 0,
@@ -23,6 +24,37 @@ const state = {
 
 function t(key) {
   return state.dict[key] ?? DICT.en[key] ?? key;
+}
+
+function tt(key, fb) {
+  const v = t(key);
+  return v === key ? fb : v;
+}
+
+// --- theme (SPEC-431 W4): localStorage botu-theme · default dark · fallback prefers-color-scheme (pre-applied inline in <head>)
+function currentTheme() {
+  const a = document.documentElement.getAttribute('data-theme');
+  return a === 'light' ? 'light' : 'dark';
+}
+
+function renderThemeBtn() {
+  const b = $('themeBtn');
+  if (!b) return;
+  const dark = currentTheme() === 'dark';
+  b.textContent = dark ? '[☾ dark]' : '[☀ light]';
+  const aria = dark
+    ? tt('themeAriaToLight', 'switch to light theme')
+    : tt('themeAriaToDark', 'switch to dark theme');
+  b.setAttribute('aria-label', aria);
+  b.title = aria;
+}
+
+function applyTheme(th) {
+  document.documentElement.setAttribute('data-theme', th);
+  try {
+    localStorage.setItem('botu-theme', th);
+  } catch {}
+  renderThemeBtn();
 }
 
 function fmt(tpl, vars) {
@@ -42,6 +74,7 @@ function clearError() {
 function errText(status, payloadError) {
   if (status === 400) return t('err400');
   if (status === 413) return t('err413');
+  if (status === 429) return fmt(t('err429'), { max: QUOTA_MAX });
   if (status === 500) return t('err500');
   if (status === 502) return t('err502');
   return fmt(t('errGeneric'), { msg: payloadError || `HTTP ${status}` });
@@ -74,7 +107,7 @@ async function handleFile(file) {
   $('dlBtn').hidden = true;
   $('regenBtn').hidden = true;
   $('idleHint').hidden = false;
-  $('genBtn').disabled = false;
+  $('genBtn').disabled = state.remaining === 0;
   $('dropZone').hidden = true;
   $('workArea').hidden = false;
   renderDynamic();
@@ -121,6 +154,10 @@ function stopTimers() {
 
 async function generate() {
   if (state.busy || !state.base64) return;
+  if (state.remaining === 0) {
+    showError(fmt(t('quotaOut'), { max: QUOTA_MAX }));
+    return;
+  }
   clearError();
   state.busy = true;
   $('genBtn').disabled = true;
@@ -139,6 +176,10 @@ async function generate() {
       data = await res.json();
     } catch {}
     if (!res.ok) {
+      if (res.status === 429) {
+        state.remaining = 0;
+        renderQuota();
+      }
       showError(errText(res.status, data && data.error));
       return;
     }
@@ -154,13 +195,18 @@ async function generate() {
     dl.href = url;
     dl.hidden = false;
     $('regenBtn').hidden = false;
+    if (state.remaining !== null) {
+      state.remaining = Math.max(0, state.remaining - 1);
+      renderQuota();
+    }
   } catch {
     showError(t('errNetwork'));
   } finally {
     stopTimers();
     state.busy = false;
-    $('genBtn').disabled = false;
-    $('regenBtn').disabled = false;
+    const out = state.remaining === 0;
+    $('genBtn').disabled = out;
+    $('regenBtn').disabled = out;
   }
 }
 
@@ -172,12 +218,49 @@ function renderDynamic() {
     updateElapsed();
     $('loadingMsg').textContent = state.dict.loadingHints[state.hintIdx] || '';
   }
+  renderQuota();
+}
+
+// --- quota (SPEC-431 W6): 每 IP 日限 5 次 — GET api/quota 显剩余；0 → 禁用生成 + 引导文案；429 → 状态行报错
+const QUOTA_MAX = 5;
+
+function renderQuota() {
+  const el = $('quotaLine');
+  if (!el) return;
+  if (state.remaining === null) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  if (state.remaining > 0) {
+    el.classList.remove('out');
+    el.textContent = fmt(t('quotaFmt'), { n: state.remaining, max: QUOTA_MAX });
+  } else {
+    el.classList.add('out');
+    el.textContent = fmt(t('quotaOut'), { max: QUOTA_MAX });
+  }
+}
+
+async function fetchQuota() {
+  try {
+    const res = await fetch('api/quota');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && typeof data.remaining === 'number') {
+      state.remaining = Math.max(0, data.remaining);
+      renderQuota();
+      if (state.remaining === 0) $('genBtn').disabled = true;
+    }
+  } catch {
+    // fail-open：quota 行保持隐藏，不阻断生成
+  }
 }
 
 function setLang(lang) {
   state.lang = lang;
   state.dict = applyLang(lang);
   renderDynamic();
+  renderThemeBtn();
 }
 
 function pickImageFromList(list) {
@@ -229,7 +312,9 @@ function wire() {
   $('regenBtn').addEventListener('click', generate);
   $('resetBtn').addEventListener('click', resetAll);
   $('langBtn').addEventListener('click', () => setLang(state.lang === 'zh' ? 'en' : 'zh'));
+  $('themeBtn').addEventListener('click', () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
 }
 
 setLang(detectLang());
 wire();
+fetchQuota();
