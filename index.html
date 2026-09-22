@@ -6,7 +6,7 @@
 <title>botu — Bot Icon Generator · 角色图生成机器人图标 · 免费在线</title>
 <meta name="description" content="botu 免费在线 bot icon 生成器：上传角色插画或照片，AI 生成极简机器人风格图标，保留发型轮廓与标志配色，PNG 下载。免费、无需注册。Free online bot icon generator — turn any character image into a minimal robot icon.">
 <link rel="canonical" href="https://botu.openclawd.co/">
-<link rel="icon" type="image/png" href="favicon.png?v=432">
+<link rel="icon" type="image/png" href="favicon.png?v=433">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="botu">
 <meta property="og:title" content="botu — Bot Icon Generator · 角色图生成机器人图标">
@@ -36,7 +36,7 @@
   document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
-<link rel="stylesheet" href="css/style.css?v=432">
+<link rel="stylesheet" href="css/style.css?v=433">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -76,9 +76,9 @@
   <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
   <section id="workArea" class="card work" hidden>
     <div class="pair">
-      <figure class="slot"><img id="srcPreview" alt="before"><figcaption><span data-i18n="beforeLabel">原图</span></figcaption></figure>
+      <figure class="slot"><div class="slotbox" id="beforeBox"></div><figcaption><span data-i18n="beforeLabel">原图</span></figcaption></figure>
       <div class="arrow" aria-hidden="true">→</div>
-      <figure class="slot"><img id="resultImg" alt="after" hidden><figcaption><span data-i18n="afterLabel">bot icon</span></figcaption></figure>
+      <figure class="slot"><div class="slotbox" id="resultBox"><svg class="ph" id="resultPh" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.2"/><rect x="8" y="9" width="2.5" height="5.5" rx="1.25" fill="currentColor"/><rect x="13.5" y="9" width="2.5" height="5.5" rx="1.25" fill="currentColor"/></svg></div><figcaption><span data-i18n="afterLabel">bot icon</span></figcaption></figure>
     </div>
     <p id="fileMeta" class="meta"></p>
     <p id="idleHint" class="hint" data-i18n="idleHint">点击「生成图标」开始</p>
@@ -98,12 +98,10 @@
     <h2 data-i18n="galleryTitle">画廊 · 效果一览</h2>
     <p class="sub" data-i18n="gallerySub">左边是原始角色图，右边是 botu 生成的极简 bot icon</p>
     <div class="grid">
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-1.png?v=432" width="512" height="512" alt="orange tabby cat character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-1.png?v=432" width="512" height="512" alt="orange tabby cat minimal bot icon" loading="lazy"></div><figcaption><span class="idx">01</span><span data-i18n="cap1">橘猫</span></figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-2.png?v=432" width="512" height="512" alt="shiba inu character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-2.png?v=432" width="512" height="512" alt="shiba inu minimal bot icon" loading="lazy"></div><figcaption><span class="idx">02</span><span data-i18n="cap2">柴犬</span></figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-3.png?v=432" width="512" height="512" alt="girl with bun hairstyle character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-3.png?v=432" width="512" height="512" alt="girl with bun minimal bot icon" loading="lazy"></div><figcaption><span class="idx">03</span><span data-i18n="cap3">丸子头女孩</span></figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-4.png?v=432" width="512" height="512" alt="penguin character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-4.png?v=432" width="512" height="512" alt="penguin minimal bot icon" loading="lazy"></div><figcaption><span class="idx">04</span><span data-i18n="cap4">企鹅</span></figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-5.png?v=432" width="512" height="512" alt="fox character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-5.png?v=432" width="512" height="512" alt="fox minimal bot icon" loading="lazy"></div><figcaption><span class="idx">05</span><span data-i18n="cap5">狐狸</span></figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-6.png?v=432" width="512" height="512" alt="robot assistant character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-6.png?v=432" width="512" height="512" alt="robot assistant minimal bot icon" loading="lazy"></div><figcaption><span class="idx">06</span><span data-i18n="cap6">机器人助手</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-1.png?v=433" width="512" height="512" alt="orange tabby cat character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-1.png?v=433" width="512" height="512" alt="orange tabby cat minimal bot icon" loading="lazy"></div><figcaption><span class="idx">01</span><span data-i18n="cap1">橘猫</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-3.png?v=433" width="512" height="512" alt="girl with bun hairstyle character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-3.png?v=433" width="512" height="512" alt="girl with bun minimal bot icon" loading="lazy"></div><figcaption><span class="idx">02</span><span data-i18n="cap2">丸子头女孩</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-4.png?v=433" width="512" height="512" alt="penguin character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-4.png?v=433" width="512" height="512" alt="penguin minimal bot icon" loading="lazy"></div><figcaption><span class="idx">03</span><span data-i18n="cap3">企鹅</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-6.png?v=433" width="512" height="512" alt="robot assistant character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-6.png?v=433" width="512" height="512" alt="robot assistant minimal bot icon" loading="lazy"></div><figcaption><span class="idx">04</span><span data-i18n="cap4">机器人助手</span></figcaption></figure>
     </div>
   </section>
 </main>
@@ -112,6 +110,6 @@
   <p class="footnote" data-i18n="footerNote">botu · 由 AI 图生图驱动 · 免费、无需注册</p>
   <p class="copy">© 2026 botu · openclawd.co</p>
 </footer>
-<script type="module" src="js/app.js?v=432"></script>
+<script type="module" src="js/app.js?v=433"></script>
 </body>
 </html>

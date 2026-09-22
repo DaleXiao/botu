@@ -1,5 +1,5 @@
 // test/seo.test.mjs — SPEC-430 SEO 静态断言
-// head 全套 / sr-only h1 / footer 双语 / robots / sitemap / og-image IHDR / 零外链 / ?v=432 版本化 / gallery 入库
+// head 全套 / sr-only h1 / footer 双语 / robots / sitemap / og-image IHDR / 零外链 / ?v=433 版本化 / gallery 入库
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -117,24 +117,24 @@ test('_headers: 全路径 no-cache', () => {
 
 test('零外链: 全部 src/href 为相对路径（canonical 除外）', () => {
   const refs = [...html.matchAll(/\s(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(refs.length >= 15, `captured ${refs.length} refs`);
+  assert.ok(refs.length >= 12, `captured ${refs.length} refs`); // SPEC-433 W4: canonical+favicon+css+8 gallery+app.js
   for (const r of refs) {
     if (r === 'https://botu.openclawd.co/') continue; // canonical
     assert.ok(!/^(https?:)?\/\//.test(r), `external ref not allowed: ${r}`);
   }
 });
 
-test('资产版本化: css/js/favicon/gallery 均带 ?v=432', () => {
-  for (const a of ['css/style.css?v=432', 'js/app.js?v=432', 'favicon.png?v=432']) {
+test('资产版本化: css/js/favicon/gallery 均带 ?v=433', () => {
+  for (const a of ['css/style.css?v=433', 'js/app.js?v=433', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `versioned ref missing: ${a}`);
   }
   const galleryRefs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);
-  assert.equal(galleryRefs.length, 12, '12 gallery imgs');
-  for (const r of galleryRefs) assert.match(r, /\?v=432$/, r);
+  assert.equal(galleryRefs.length, 8, '8 gallery imgs (4 pairs)');
+  for (const r of galleryRefs) assert.match(r, /\?v=433$/, r);
 });
 
-test('gallery 成品: 6 对 char/icon png 全部存在且非空', () => {
-  for (let i = 1; i <= 6; i += 1) {
+test('gallery 成品: 4 对 char/icon png（SPEC-433 W4 存留集 1/3/4/6）全部存在且非空', () => {
+  for (const i of [1, 3, 4, 6]) {
     for (const kind of ['char', 'icon']) {
       const p = join(ROOT, `gallery/${kind}-${i}.png`);
       assert.ok(existsSync(p), `${kind}-${i}.png exists`);

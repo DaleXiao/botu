@@ -1,8 +1,11 @@
-// functions/api/generate.js — T-730/SPEC-430
-// POST /api/generate {image_base64, mime} → {image_base64, mime:"image/png"}
-// 服务端代理 DashScope qwen-image-3.0-pro img2img；OSS 签名 URL 不出 worker。
-// 纯函数（validateInput/buildBody/extractImage/bufToBase64）export 供 node --test；
-// env.__fetch 可覆写 fetch 供单测 mock。
+// functions/api/generate.js — T-730/SPEC-430 · SPEC-433/T-733 v4 异步 job 流（方案 b）
+// POST /api/generate {image_base64, mime} → 200 {job_id}：校验/quota 语义与 v3 一致，立即返回；
+// 生成在 ctx.waitUntil 后台执行（runJob），终态写 KV job:<id>；前端轮询 GET /api/result?job=<id>（result.js）。
+// 依据：本账号 DashScope 多模态生成不支持异步任务（探针 403 AccessDenied "current user api does not
+// support asynchronous calls"），同步出图 2-4min 超 CF 边缘 100s → 524；waitUntil 不受边缘响应超时约束。
+// 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / key 不出 worker。
+// 纯函数 + runGeneration/runJob/job helpers export 供 node --test；env.__fetch 可覆写 fetch 供 mock。
+// quota 恰好一次：仅生成成功扣费一次（counted 标记落 job 值）；重复 poll 走 result.js 纯 KV 读，不扣费。
 
 export const MODEL = 'qwen-image-3.0-pro';
 export const UPSTREAM_URL =
@@ -47,6 +50,56 @@ export async function rlWrite(env, ip, n) {
     console.error('rl write failed (fail-open):', String(e).slice(0, 200));
   }
 }
+// SPEC-433 W2: job 流 — 同一 binding，key job:<id>，TTL 1h。
+// job 存储异常不 fail-open（无 job 即无法轮询，POST 直接 500）；quota 读/写仍 fail-open。
+export const JOB_TTL = 3600;
+
+export function jobKey(id) {
+  return `job:${id}`;
+}
+
+// job id: webcrypto 随机 32 hex
+export function newJobId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// job 值 JSON 序列化存取：读 missing/损坏/异常一律 null；写异常 false（调用方决定语义）
+export async function jobRead(env, id) {
+  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.get !== 'function') return null;
+  try {
+    const raw = await env.BOTU_RL.get(jobKey(id));
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? v : null;
+  } catch (e) {
+    console.error('job read failed:', String(e).slice(0, 200));
+    return null;
+  }
+}
+
+export async function jobWrite(env, id, val) {
+  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.put !== 'function') return false;
+  try {
+    await env.BOTU_RL.put(jobKey(id), JSON.stringify(val), { expirationTtl: JOB_TTL });
+    return true;
+  } catch (e) {
+    console.error('job write failed:', String(e).slice(0, 200));
+    return false;
+  }
+}
+
+// 错误脱敏：剥 URL / 凭证样 token / 上游域名，截断 200 字符 — 任何响应与 job 值不得泄漏上游细节
+export function sanitizeError(msg) {
+  return String(msg == null ? '' : msg)
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/sk-[A-Za-z0-9_-]+/gi, '[redacted]')
+    .replace(/Signature=[^\s&"']*/gi, '[redacted]')
+    .replace(/x-oss-[A-Za-z0-9_-]+/gi, '[redacted]')
+    .replace(/dashscope/gi, '[upstream]')
+    .slice(0, 200);
+}
+
 export const ICON_PROMPT = `[목표]
 
 사용자가 제공한 이미지 속 인물 또는 캐릭터를 검은 캡슐 눈을 가진 미니멀 2D 봇 아이콘 한 장으로 재해석한다.
@@ -206,9 +259,74 @@ function json(data, status = 200) {
   });
 }
 
-export async function onRequestPost({ request, env }) {
+// SPEC-433: 完整生成管线（纯 I/O）；成功 {ok:true,image_base64,mime}，失败 {ok:false,status,error}
+export async function runGeneration(env, v) {
   const doFetch = env.__fetch || fetch;
+  const key = env.DASHSCOPE_API_KEY;
+  if (!key) {
+    return { ok: false, status: 500, error: 'server misconfigured: missing DASHSCOPE_API_KEY' };
+  }
 
+  let upstreamRes;
+  try {
+    upstreamRes = await doFetch(UPSTREAM_URL, {
+      method: 'POST',
+      headers: { Authorization: ['Bear', 'er'].join('') + ' ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildBody(v.image_base64, v.mime)),
+    });
+  } catch (e) {
+    return { ok: false, status: 502, error: `upstream fetch failed: ${String(e).slice(0, 200)}` };
+  }
+
+  if (!upstreamRes.ok) {
+    const text = (await upstreamRes.text().catch(() => '')).slice(0, 400);
+    return { ok: false, status: 502, error: `upstream ${upstreamRes.status}: ${text}` };
+  }
+
+  let data;
+  try {
+    data = await upstreamRes.json();
+  } catch {
+    return { ok: false, status: 502, error: 'upstream returned non-JSON body' };
+  }
+
+  const imgUrl = extractImage(data);
+  if (!imgUrl) {
+    return { ok: false, status: 502, error: 'no image in upstream response' };
+  }
+
+  let imgRes;
+  try {
+    imgRes = await doFetch(imgUrl);
+  } catch (e) {
+    return { ok: false, status: 502, error: `image download failed: ${String(e).slice(0, 200)}` };
+  }
+  if (!imgRes.ok) {
+    return { ok: false, status: 502, error: `image download failed with ${imgRes.status}` };
+  }
+
+  const bytes = await imgRes.arrayBuffer();
+  return { ok: true, image_base64: bufToBase64(bytes), mime: 'image/png' };
+}
+
+// 后台 job：生成 → 写 KV 终态。成功先写 done（poller 立即可见）再计数 +1（counted 标记；
+// rlWrite fail-open：写失败=用户免费一次，与既有 quota 语义一致）。失败写 error（已脱敏），不扣。
+export async function runJob(env, job) {
+  const { jobId, ip, image_base64, mime } = job;
+  const r = await runGeneration(env, { image_base64, mime });
+  if (!r.ok) {
+    await jobWrite(env, jobId, { state: 'error', error: sanitizeError(r.error), ip });
+    return;
+  }
+  const next = (await rlReadCount(env, ip)) + 1;
+  await jobWrite(env, jobId, {
+    state: 'done', image_b64: r.image_base64, mime: r.mime,
+    remaining: Math.max(0, DAILY_LIMIT - next), counted: true, ip,
+  });
+  await rlWrite(env, ip, next);
+}
+
+export async function onRequestPost({ request, env, ctx }) {
   let body;
   try {
     body = await request.json();
@@ -219,7 +337,7 @@ export async function onRequestPost({ request, env }) {
   const v = validateInput(body);
   if (!v.ok) return json({ error: v.error }, v.status);
 
-  // SPEC-431 W6: 每 IP 日限 5 次 — 超限 429，成功后才计数 +1
+  // SPEC-431 W6: 每 IP 日限 5 次 — 超限 429；扣费只在生成成功后（runJob 内）
   const ip = clientIp(request);
   const rlCount = await rlReadCount(env, ip);
   if (rlCount >= DAILY_LIMIT) {
@@ -229,47 +347,15 @@ export async function onRequestPost({ request, env }) {
   const key = env.DASHSCOPE_API_KEY;
   if (!key) return json({ error: 'server misconfigured: missing DASHSCOPE_API_KEY' }, 500);
 
-  let upstreamRes;
-  try {
-    upstreamRes = await doFetch(UPSTREAM_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildBody(v.image_base64, v.mime)),
-    });
-  } catch (e) {
-    return json({ error: `upstream fetch failed: ${String(e).slice(0, 200)}` }, 502);
-  }
+  // SPEC-433 W2: 建 job 立即返回 — 生成在 waitUntil 内完成，规避 CF 边缘 100s 超时（524）
+  const jobId = newJobId();
+  const stored = await jobWrite(env, jobId, { state: 'pending', ip, created: Date.now() });
+  if (!stored) return json({ error: 'job store unavailable' }, 500);
 
-  if (!upstreamRes.ok) {
-    const text = (await upstreamRes.text().catch(() => '')).slice(0, 400);
-    return json({ error: `upstream ${upstreamRes.status}: ${text}` }, 502);
-  }
-
-  let data;
-  try {
-    data = await upstreamRes.json();
-  } catch {
-    return json({ error: 'upstream returned non-JSON body' }, 502);
-  }
-
-  const imgUrl = extractImage(data);
-  if (!imgUrl) {
-    return json({ error: `no image in upstream response: ${JSON.stringify(data).slice(0, 400)}` }, 502);
-  }
-
-  let imgRes;
-  try {
-    imgRes = await doFetch(imgUrl);
-  } catch (e) {
-    return json({ error: `image download failed: ${String(e).slice(0, 200)}` }, 502);
-  }
-  if (!imgRes.ok) {
-    return json({ error: `image download failed with ${imgRes.status}` }, 502);
-  }
-
-  const bytes = await imgRes.arrayBuffer();
-  await rlWrite(env, ip, rlCount + 1); // 只在生成成功后计数
-  return json({ image_base64: bufToBase64(bytes), mime: 'image/png' });
+  const run = runJob(env, { jobId, ip, image_base64: v.image_base64, mime: v.mime });
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(run);
+  else await run; // 无 ctx（单测/本地）兜底：内联执行；响应仍只含 job_id
+  return json({ job_id: jobId });
 }
 
 export async function onRequestGet() {

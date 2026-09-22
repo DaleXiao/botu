@@ -4,11 +4,25 @@ import assert from 'node:assert/strict';
 import {
   MODEL, UPSTREAM_URL, ICON_PROMPT, MAX_B64_LEN,
   validateInput, buildBody, extractImage, bufToBase64,
-  onRequestPost, onRequestGet,
+  onRequestPost, onRequestGet, runGeneration, jobRead,
 } from '../functions/api/generate.js';
 
 const B64 = 'aGVsbG8=';
 const TEST_KEY = ['test', '_key'].join('');
+
+// SPEC-433: KV stub（内存 Map），job 流测试用
+function mockKV(initial) {
+  const store = new Map(Object.entries(initial || {}));
+  const puts = [];
+  return {
+    store,
+    puts,
+    binding: {
+      async get(k) { return store.has(k) ? store.get(k) : null; },
+      async put(k, v, opts) { puts.push({ k, v, opts }); store.set(k, v); },
+    },
+  };
+}
 
 const post = (payload, env, rawBody) =>
   onRequestPost({
@@ -99,34 +113,44 @@ test('onRequestPost: 缺 DASHSCOPE_API_KEY -> 500', async () => {
   assert.match((await res.json()).error, /DASHSCOPE_API_KEY/);
 });
 
-test('onRequestPost: 上游非 200 -> 502 带截断错误体', async () => {
-  const res = await post({ image_base64: B64, mime: 'image/png' }, {
+// ── SPEC-433 job 流：runGeneration 纯管线 + POST 立即返回 {job_id} ──
+test('runGeneration: 上游非 200 -> {ok:false,502} 带截断错误体', async () => {
+  const r = await runGeneration({
     DASHSCOPE_API_KEY: TEST_KEY,
     __fetch: async () => new Response('RATE_LIMITED'.repeat(200), { status: 429 }),
-  });
-  assert.equal(res.status, 502);
-  const j = await res.json();
-  assert.match(j.error, /upstream 429/);
-  assert.ok(j.error.length < 500, 'error body truncated');
+  }, { image_base64: B64, mime: 'image/png' });
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 502);
+  assert.match(r.error, /upstream 429/);
+  assert.ok(r.error.length < 500, 'error body truncated');
 });
 
-test('onRequestPost: 上游 fetch 抛异常 -> 502', async () => {
-  const res = await post({ image_base64: B64, mime: 'image/png' }, {
+test('runGeneration: 上游 fetch 抛异常 -> {ok:false,502}', async () => {
+  const r = await runGeneration({
     DASHSCOPE_API_KEY: TEST_KEY,
     __fetch: async () => { throw new Error('connect ETIMEDOUT'); },
-  });
-  assert.equal(res.status, 502);
+  }, { image_base64: B64, mime: 'image/png' });
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 502);
 });
 
-test('onRequestPost: 上游无 image -> 502', async () => {
-  const res = await post({ image_base64: B64, mime: 'image/png' }, {
+test('runGeneration: 上游无 image -> {ok:false,502}，错误不带上游响应体', async () => {
+  const r = await runGeneration({
     DASHSCOPE_API_KEY: TEST_KEY,
-    __fetch: async () => Response.json({ output: {} }),
-  });
-  assert.equal(res.status, 502);
+    __fetch: async () => Response.json({ output: { leak: 'https://oss.example/leak.png' } }),
+  }, { image_base64: B64, mime: 'image/png' });
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 502);
+  assert.equal(r.error, 'no image in upstream response');
 });
 
-test('onRequestPost: happy path -> 服务端下载 OSS，返回 {image_base64, mime:image/png}', async () => {
+test('runGeneration: 缺 key -> {ok:false,500}', async () => {
+  const r = await runGeneration({ __fetch: async () => new Response('x') }, { image_base64: B64, mime: 'image/png' });
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 500);
+});
+
+test('onRequestPost: happy path -> 200 {job_id}；job 终态 done 含图；服务端下载 OSS', async () => {
   const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
   const calls = [];
   const mock = async (url, opts) => {
@@ -139,12 +163,20 @@ test('onRequestPost: happy path -> 服务端下载 OSS，返回 {image_base64, m
     }
     return new Response(bytes, { status: 200 });
   };
-  const res = await post({ image_base64: B64, mime: 'image/png' }, { DASHSCOPE_API_KEY: TEST_KEY, __fetch: mock });
+  const kv = mockKV();
+  const res = await post({ image_base64: B64, mime: 'image/png' }, {
+    DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mock,
+  });
   assert.equal(res.status, 200);
   const j = await res.json();
-  assert.equal(j.mime, 'image/png');
-  assert.equal(j.image_base64, Buffer.from(bytes).toString('base64'));
-  assert.deepEqual(calls, [UPSTREAM_URL, 'https://oss.example/gen.png?sig=9']);
+  assert.match(j.job_id, /^[0-9a-f]{32}$/);
+  assert.deepEqual(Object.keys(j), ['job_id']); // 响应只有 job_id，无图/上游元数据
+  assert.deepEqual(calls, [UPSTREAM_URL, extractImage(okUpstream)]);
+  const job = await jobRead({ BOTU_RL: kv.binding }, j.job_id);
+  assert.equal(job.state, 'done');
+  assert.equal(job.mime, 'image/png');
+  assert.equal(job.image_b64, Buffer.from(bytes).toString('base64'));
+  assert.equal(job.counted, true);
 });
 
 test('onRequestGet -> 405', async () => {
