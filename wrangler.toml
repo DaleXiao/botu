@@ -6,3 +6,11 @@ compatibility_flags = ["nodejs_compat"]
 [[kv_namespaces]]
 binding = "BOTU_RL"
 id = "5f93916e14d44bf687eaa1afc0ee336c"
+
+# SPEC-435/T-736 v5：DO 执行体在 companion worker botu-job-runner（Pages 不能承载 DO class；
+# Pages 侧 DO binding 必须带 script_name — 官方 wrangler-configuration 文档 2026-06-25）。
+# 其余键不动（不动区：KV id / compatibility / name）。
+[[durable_objects.bindings]]
+name = "JOB_RUNNER"
+class_name = "JobRunner"
+script_name = "botu-job-runner"
