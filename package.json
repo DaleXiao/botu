@@ -1,0 +1,10 @@
+{
+  "name": "botu",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "botu.openclawd.co — turn any character image into a minimal bot icon",
+  "scripts": {
+    "test": "node --test"
+  }
+}

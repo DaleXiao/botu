@@ -1,0 +1,5 @@
+node_modules/
+tmp-shots/
+og-raw.png
+*.tmp
+.DS_Store
