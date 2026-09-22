@@ -1,5 +1,5 @@
 // test/seo.test.mjs — SPEC-430 SEO 静态断言
-// head 全套 / sr-only h1 / footer 双语 / robots / sitemap / og-image IHDR / 零外链 / ?v=433 版本化 / gallery 入库
+// head 全套 / sr-only h1 / footer 双语 / robots / sitemap / og-image IHDR / 零外链 / ?v=437 版本化 / gallery 入库
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -124,21 +124,21 @@ test('零外链: 全部 src/href 为相对路径（canonical 除外）', () => {
   }
 });
 
-test('资产版本化: css/js/favicon/gallery 均带 ?v=433', () => {
-  for (const a of ['css/style.css?v=433', 'js/app.js?v=433', 'favicon.png?v=433']) {
+test('资产版本化: css/js/gallery ?v=437，favicon ?v=433（内容未改）', () => {
+  for (const a of ['css/style.css?v=437', 'js/app.js?v=437', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `versioned ref missing: ${a}`);
   }
   const galleryRefs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);
   assert.equal(galleryRefs.length, 8, '8 gallery imgs (4 pairs)');
-  for (const r of galleryRefs) assert.match(r, /\?v=433$/, r);
+  for (const r of galleryRefs) assert.match(r, /\.webp\?v=437$/, r);
 });
 
-test('gallery 成品: 4 对 char/icon png（SPEC-433 W4 存留集 1/3/4/6）全部存在且非空', () => {
+test('gallery 成品: 4 对 char/icon WebP（存留集 1/3/4/6，SPEC-437 340px）全部存在且非空', () => {
   for (const i of [1, 3, 4, 6]) {
     for (const kind of ['char', 'icon']) {
-      const p = join(ROOT, `gallery/${kind}-${i}.png`);
-      assert.ok(existsSync(p), `${kind}-${i}.png exists`);
-      assert.ok(readFileSync(p).length > 1000, `${kind}-${i}.png non-empty`);
+      const p = join(ROOT, `gallery/${kind}-${i}.webp`);
+      assert.ok(existsSync(p), `${kind}-${i}.webp exists`);
+      assert.ok(readFileSync(p).length > 1000, `${kind}-${i}.webp non-empty`);
     }
   }
 });

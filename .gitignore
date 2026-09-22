@@ -3,3 +3,6 @@ tmp-shots/
 og-raw.png
 *.tmp
 .DS_Store
+_worker.bundle
+_worker.js
+.wrangler/
