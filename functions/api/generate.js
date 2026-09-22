@@ -9,6 +9,44 @@ export const UPSTREAM_URL =
   'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 export const MIME_ALLOW = ['image/jpeg', 'image/png', 'image/webp'];
 export const MAX_B64_LEN = 14_000_000; // base64 chars ≈ 10.5 MB binary
+
+// SPEC-431 W6: per-IP daily limit — KV binding BOTU_RL, key rl:<ip>:<UTC yyyymmdd>, TTL 48h.
+// binding 缺失或 KV 读/写异常一律 fail-open（视为可生成），错误只记 console.error。
+export const DAILY_LIMIT = 5;
+export const RL_TTL = 172800;
+
+export function utcDay(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`;
+}
+
+export function rlKey(ip, day) {
+  return `rl:${ip}:${day}`;
+}
+
+export function clientIp(request) {
+  return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+export async function rlReadCount(env, ip) {
+  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.get !== 'function') return 0; // fail-open
+  try {
+    const n = parseInt(await env.BOTU_RL.get(rlKey(ip, utcDay())), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch (e) {
+    console.error('rl read failed (fail-open):', String(e).slice(0, 200));
+    return 0;
+  }
+}
+
+export async function rlWrite(env, ip, n) {
+  if (!env || !env.BOTU_RL || typeof env.BOTU_RL.put !== 'function') return; // fail-open
+  try {
+    await env.BOTU_RL.put(rlKey(ip, utcDay()), String(n), { expirationTtl: RL_TTL });
+  } catch (e) {
+    console.error('rl write failed (fail-open):', String(e).slice(0, 200));
+  }
+}
 export const ICON_PROMPT = `[목표]
 
 사용자가 제공한 이미지 속 인물 또는 캐릭터를 검은 캡슐 눈을 가진 미니멀 2D 봇 아이콘 한 장으로 재해석한다.
@@ -181,6 +219,13 @@ export async function onRequestPost({ request, env }) {
   const v = validateInput(body);
   if (!v.ok) return json({ error: v.error }, v.status);
 
+  // SPEC-431 W6: 每 IP 日限 5 次 — 超限 429，成功后才计数 +1
+  const ip = clientIp(request);
+  const rlCount = await rlReadCount(env, ip);
+  if (rlCount >= DAILY_LIMIT) {
+    return json({ error: `daily limit exceeded (${DAILY_LIMIT} per IP per day)`, remaining: 0 }, 429);
+  }
+
   const key = env.DASHSCOPE_API_KEY;
   if (!key) return json({ error: 'server misconfigured: missing DASHSCOPE_API_KEY' }, 500);
 
@@ -223,6 +268,7 @@ export async function onRequestPost({ request, env }) {
   }
 
   const bytes = await imgRes.arrayBuffer();
+  await rlWrite(env, ip, rlCount + 1); // 只在生成成功后计数
   return json({ image_base64: bufToBase64(bytes), mime: 'image/png' });
 }
 

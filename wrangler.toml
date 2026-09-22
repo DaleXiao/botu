@@ -1,0 +1,6 @@
+name = "botu"
+pages_build_output_dir = "."
+
+[[kv_namespaces]]
+binding = "BOTU_RL"
+id = "5f93916e14d44bf687eaa1afc0ee336c"
