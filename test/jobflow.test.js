@@ -61,7 +61,10 @@ const dirtyFetch = async (url) => (url === UPSTREAM_URL
   ? new Response(DIRTY_BODY, { status: 500 })
   : new Response(pngBytes, { status: 200 }));
 
-const post = (env, { ip = IP, ctx = undefined, body = JSON.stringify({ image_base64: B64, mime: 'image/png' }) } = {}) =>
+// SPEC-433 hotfix：慢上游 stub — 模拟生产 DashScope 2-4min 出图（ms 级缩放），断言响应先行
+const slowFetch = (ms) => async (url) => { await new Promise((r)=>setTimeout(r,ms)); return okFetch(url); };
+
+const post = (env, { ip = IP, ctx = undefined, waitUntil = undefined, body = JSON.stringify({ image_base64: B64, mime: 'image/png' }) } = {}) =>
   onRequestPost({
     request: new Request('https://botu.openclawd.co/api/generate', {
       method: 'POST',
@@ -70,6 +73,7 @@ const post = (env, { ip = IP, ctx = undefined, body = JSON.stringify({ image_bas
     }),
     env,
     ctx,
+    waitUntil,
   });
 
 const getResult = (env, query, method = 'GET') =>
@@ -81,6 +85,13 @@ const getResult = (env, query, method = 'GET') =>
 function ctxStub() {
   const captured = [];
   return { captured, ctx: { waitUntil: (p) => captured.push(p) } };
+}
+
+// Pages Functions 生产 context 形状：顶层 waitUntil、无 ctx 字段
+//（wrangler templates/pages-template-worker.ts 构造，旧代码只认 ctx.waitUntil → 内联 → 524）
+function pagesCtxStub() {
+  const captured = [];
+  return { captured, waitUntil: (p) => captured.push(p) };
 }
 
 function scanNoLeak(text, label) {
@@ -150,6 +161,32 @@ test('POST：job put 带 TTL 3600，值为 JSON', async () => {
   assert.equal(jobPut.opts.expirationTtl, JOB_TTL);
   assert.equal(typeof JSON.parse(jobPut.v), 'object');
   await captured[0];
+});
+
+// SPEC-433 hotfix 回归：旧代码下必红（无 ctx → 内联 await run → elapsed ≥1500ms）
+test('POST Pages 生产形状：顶层 waitUntil + 慢上游(1500ms) → 响应先行（线上 524 根因回归）', async () => {
+  const kv = mockKV();
+  const { captured, waitUntil } = pagesCtxStub();
+  const t0 = Date.now();
+  const res = await post({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: slowFetch(1500) }, { waitUntil });
+  const elapsed = Date.now() - t0;
+  const bodyText = await res.text();
+  scanNoLeak(bodyText, 'Pages 形状 POST 响应');
+  assert.ok(elapsed < 800, `响应先行：elapsed=${elapsed}ms 应 <800ms（旧代码内联兜底会 ≥1500ms）`);
+  assert.equal(res.status, 200);
+  const j = JSON.parse(bodyText);
+  assert.deepEqual(Object.keys(j), ['job_id']);
+  assert.match(j.job_id, /^[0-9a-f]{32}$/);
+  assert.equal(captured.length, 1, '顶层 waitUntil 恰好捕获一次');
+  // 后台未完成（慢上游仍在跑）：result 回 pending
+  const pr = await getResult({ BOTU_RL: kv.binding }, '?job=' + j.job_id);
+  assert.deepEqual(await pr.json(), { state: 'pending' });
+  // 等后台跑完 → done，quota 恰好一次
+  await captured[0];
+  const done = await jobRead({ BOTU_RL: kv.binding }, j.job_id);
+  assert.equal(done.state, 'done');
+  assert.equal(done.counted, true);
+  assert.equal(kv.store.get(RLK), '1', 'rl 计数恰好 1');
 });
 
 // ── POST：校验 / quota 分支语义不变 ─────────────
