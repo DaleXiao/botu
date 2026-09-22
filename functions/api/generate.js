@@ -1,6 +1,7 @@
 // functions/api/generate.js — T-730/SPEC-430 · SPEC-433/T-733 v4 异步 job 流（方案 b）
 // POST /api/generate {image_base64, mime} → 200 {job_id}：校验/quota 语义与 v3 一致，立即返回；
-// 生成在 ctx.waitUntil 后台执行（runJob），终态写 KV job:<id>；前端轮询 GET /api/result?job=<id>（result.js）。
+// 生成在 context.waitUntil 后台执行（runJob），终态写 KV job:<id>；前端轮询 GET /api/result?job=<id>（result.js）。
+// waitUntil 两种形状：Pages Functions 生产为顶层 waitUntil（无 ctx 字段）；Workers 为 ctx.waitUntil（见调度块注释）。
 // 依据：本账号 DashScope 多模态生成不支持异步任务（探针 403 AccessDenied "current user api does not
 // support asynchronous calls"），同步出图 2-4min 超 CF 边缘 100s → 524；waitUntil 不受边缘响应超时约束。
 // 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / key 不出 worker。
@@ -326,7 +327,7 @@ export async function runJob(env, job) {
   await rlWrite(env, ip, next);
 }
 
-export async function onRequestPost({ request, env, ctx }) {
+export async function onRequestPost({ request, env, ctx, waitUntil }) {
   let body;
   try {
     body = await request.json();
@@ -353,8 +354,13 @@ export async function onRequestPost({ request, env, ctx }) {
   if (!stored) return json({ error: 'job store unavailable' }, 500);
 
   const run = runJob(env, { jobId, ip, image_base64: v.image_base64, mime: v.mime });
-  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(run);
-  else await run; // 无 ctx（单测/本地）兜底：内联执行；响应仍只含 job_id
+  // SPEC-433 hotfix：Pages Functions 生产 context 是顶层 waitUntil、无 ctx 字段 —— wrangler 4.136.1
+  // templates/pages-template-worker.ts:141-162 构造 {request, functionPath, next, params, data,
+  // env, waitUntil, passThroughOnException}；Workers 形状才是 ctx.waitUntil。旧代码只认 ctx.waitUntil，
+  // 生产落入内联兜底 → 同步生成 2-4min 超 CF 边缘 100s → 524。调度：顶层优先 → ctx 兜底 → 皆无才内联。
+  if (typeof waitUntil === 'function') waitUntil(run);
+  else if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(run);
+  else await run; // 皆无（单测/本地）兜底：内联执行；响应仍只含 job_id
   return json({ job_id: jobId });
 }
 
