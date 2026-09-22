@@ -115,39 +115,47 @@ test('onRequestPost: 计数已达 5 → 429 JSON 且不打上游', async () => {
   assert.equal(kv.puts.length, 0);
 });
 
-test('onRequestPost: 成功生成后计数 +1（含 TTL），key 用 CF-Connecting-IP', async () => {
+test('onRequestPost: job 成功后计数 +1（含 TTL），key 用 CF-Connecting-IP', async () => {
   const kv = mockKV({ [KEY]: '2' });
   const res = await post({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() });
   assert.equal(res.status, 200);
-  assert.deepEqual(kv.puts, [{ k: KEY, v: '3', opts: { expirationTtl: 172800 } }]);
+  const rlPuts = kv.puts.filter((x) => x.k === KEY);
+  assert.deepEqual(rlPuts, [{ k: KEY, v: '3', opts: { expirationTtl: 172800 } }]);
 });
 
-test('onRequestPost: 上游失败不计数', async () => {
+test('onRequestPost: 上游失败 → job error，不计数', async () => {
   const kv = mockKV({ [KEY]: '1' });
   const res = await post({
     DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding,
     __fetch: async () => new Response('boom', { status: 500 }),
   });
-  assert.equal(res.status, 502);
-  assert.equal(kv.puts.length, 0);
+  assert.equal(res.status, 200); // job 已受理
+  const j = await res.json();
+  const job = JSON.parse(await kv.binding.get('job:' + j.job_id));
+  assert.equal(job.state, 'error');
+  assert.equal(kv.puts.filter((x) => x.k === KEY).length, 0);
 });
 
-test('onRequestPost: KV get/put 全挂 → fail-open 照常生成 200', async () => {
+test('onRequestPost: KV 全挂 → quota fail-open 但 job 无法落盘 → 500，不打上游', async () => {
   const bad = {
     get: async () => { throw new Error('kv read down'); },
     put: async () => { throw new Error('kv write down'); },
   };
-  const res = await post({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: bad, __fetch: mockFetch() });
-  assert.equal(res.status, 200);
-  const j = await res.json();
-  assert.equal(j.image_base64, Buffer.from(pngBytes).toString('base64'));
+  let fetched = 0;
+  const res = await post({
+    DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: bad,
+    __fetch: async () => { fetched += 1; return mockFetch()(); },
+  });
+  assert.equal(res.status, 500);
+  assert.equal((await res.json()).error, 'job store unavailable');
+  assert.equal(fetched, 0);
 });
 
 test('onRequestPost: 无 CF-Connecting-IP → key 用 unknown', async () => {
   const kv = mockKV();
   const res = await post({ DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() }, null);
   assert.equal(res.status, 200);
-  assert.equal(kv.puts[0].k, rlKey('unknown', today));
+  assert.ok(kv.puts.some((x) => x.k === rlKey('unknown', today)));
 });
 
 // ── quota.js 契约 ───────────────────────────────
