@@ -1,7 +1,8 @@
 // app.js — T-730 站点接线：上传 → 压缩 → 预览 → 生成 → 结果/下载
-// loading 态：转圈 + 已等待秒数 + 轮换文案，明确提示 ~3-4 分钟
-import { DICT, detectLang, applyLang } from './i18n.js?v=432';
-import { compressImage, ACCEPT_MIME } from './upload.js?v=432';
+// SPEC-433 W3: 生成改异步 job 流 — POST 拿 job_id 后每 3s 轮询 /api/result，上限 6min
+// loading 态：转圈 + 已等待秒数 + 轮换文案；结果框用内联 SVG 占位，done 才渲染 <img>（W3'，任何状态无空 src）
+import { DICT, detectLang, applyLang } from './i18n.js?v=433';
+import { compressImage, ACCEPT_MIME } from './upload.js?v=433';
 
 const $ = (id) => document.getElementById(id);
 
@@ -101,9 +102,8 @@ async function handleFile(file) {
   state.height = c.height;
   state.kb = Math.max(1, Math.round(c.blob.size / 1024));
   state.previewUrl = c.previewUrl;
-  $('srcPreview').src = c.previewUrl;
-  $('resultImg').hidden = true;
-  $('resultImg').removeAttribute('src');
+  renderBefore(c.previewUrl);
+  clearResult();
   $('dlBtn').hidden = true;
   $('regenBtn').hidden = true;
   $('idleHint').hidden = false;
@@ -123,6 +123,7 @@ function resetAll() {
   $('workArea').hidden = true;
   $('dropZone').hidden = false;
   clearError();
+  clearResult();
 }
 
 function updateElapsed() {
@@ -152,6 +153,85 @@ function stopTimers() {
   $('loadingBox').hidden = true;
 }
 
+// SPEC-433 W3': 图均动态渲染 — 初始 DOM 不放空 src <img>；占位用内联 SVG bot 脸（随主题 currentColor）
+function renderBefore(url) {
+  const box = $('beforeBox');
+  box.textContent = '';
+  const img = document.createElement('img');
+  img.alt = 'before';
+  img.src = url;
+  box.appendChild(img);
+}
+
+function clearResult() {
+  const box = $('resultBox');
+  const old = box.querySelector('img');
+  if (old) old.remove();
+  $('resultPh').hidden = false;
+}
+
+function showResult(url) {
+  clearResult();
+  const img = document.createElement('img');
+  img.id = 'resultImg';
+  img.alt = 'after';
+  img.src = url;
+  $('resultBox').appendChild(img);
+  $('resultPh').hidden = true;
+}
+
+// SPEC-433 W3: 3s 轮询 /api/result，预算 6min；网络抖动/5xx 视为瞬时继续轮，404/error/超时给可重试提示
+const POLL_MS = 3000;
+const POLL_BUDGET_MS = 6 * 60 * 1000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function pollResult(jobId) {
+  const deadline = Date.now() + POLL_BUDGET_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_MS);
+    let res = null;
+    let data = null;
+    try {
+      res = await fetch('api/result?job=' + encodeURIComponent(jobId));
+      try {
+        data = await res.json();
+      } catch {}
+    } catch {
+      continue; // 瞬时网络抖动：不中断轮询
+    }
+    if (res.status === 404) {
+      showError(t('errJobGone'));
+      return;
+    }
+    if (!res.ok) continue; // 5xx（含 KV 异常）：瞬时，继续轮
+    if (data && data.state === 'done' && typeof data.image_base64 === 'string') {
+      renderDone(data);
+      return;
+    }
+    if (data && data.state === 'error') {
+      showError(t('errJobFailed'));
+      return;
+    }
+    // pending → 继续；进度态（spinner/秒数/轮换文案）由 loadingBox 承担
+  }
+  showError(t('errTimeout'));
+}
+
+function renderDone(data) {
+  const url = 'data:' + (data.mime || 'image/png') + ';base64,' + data.image_base64;
+  showResult(url);
+  const dl = $('dlBtn');
+  dl.href = url;
+  dl.hidden = false;
+  $('regenBtn').hidden = false;
+  if (typeof data.remaining === 'number') {
+    state.remaining = Math.max(0, data.remaining); // 服务端权威余额
+  } else if (state.remaining !== null) {
+    state.remaining = Math.max(0, state.remaining - 1);
+  }
+  renderQuota();
+}
+
 async function generate() {
   if (state.busy || !state.base64) return;
   if (state.remaining === 0) {
@@ -163,9 +243,9 @@ async function generate() {
   $('genBtn').disabled = true;
   $('regenBtn').disabled = true;
   $('dlBtn').hidden = true;
+  clearResult(); // 等待期结果框显 SVG 占位，不出现空 src 破图
   startLoading();
   try {
-    // 无 early-abort：上游生成 ~210s，不设 signal，让浏览器默认超时兜底
     const res = await fetch('api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -183,22 +263,11 @@ async function generate() {
       showError(errText(res.status, data && data.error));
       return;
     }
-    if (!data || typeof data.image_base64 !== 'string') {
+    if (!data || typeof data.job_id !== 'string') {
       showError(errText(502, 'empty result'));
       return;
     }
-    const url = `data:${data.mime || 'image/png'};base64,${data.image_base64}`;
-    const img = $('resultImg');
-    img.src = url;
-    img.hidden = false;
-    const dl = $('dlBtn');
-    dl.href = url;
-    dl.hidden = false;
-    $('regenBtn').hidden = false;
-    if (state.remaining !== null) {
-      state.remaining = Math.max(0, state.remaining - 1);
-      renderQuota();
-    }
+    await pollResult(data.job_id);
   } catch {
     showError(t('errNetwork'));
   } finally {

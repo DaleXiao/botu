@@ -79,26 +79,26 @@ test('gallery 不动锚: icon-3/4/6 + char-1..6 md5 == 原值', () => {
   for (const [p, h] of Object.entries(ORIG)) assert.equal(md5(p), h, `${p} 被动过`);
 });
 
-test('?v=432 全量在场: css/js/favicon/12 张 gallery 图', () => {
+test('?v=433 全量在场: css/js/favicon/12 张 gallery 图', () => {
   const html = SURFACE['index.html'];
-  for (const a of ['css/style.css?v=432', 'js/app.js?v=432', 'favicon.png?v=432']) {
+  for (const a of ['css/style.css?v=433', 'js/app.js?v=433', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `缺版本化引用: ${a}`);
   }
   const refs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);
   assert.equal(refs.length, 12, '12 张 gallery 图');
-  for (const r of refs) assert.match(r, /\?v=432$/, r);
+  for (const r of refs) assert.match(r, /\?v=433$/, r);
 });
 
-test('?v=431 零残留（html/js/css/测试）', () => {
+test('?v=432 零残留（html/js/css/测试）', () => {
   for (const f of ['index.html', 'js/app.js', 'js/i18n.js', 'js/upload.js', 'css/style.css', 'test/seo.test.mjs']) {
-    assert.ok(!read(f).includes('v=431'), `${f} 仍含 v=431`);
+    assert.ok(!read(f).includes('v=432'), `${f} 仍含 v=432`);
   }
 });
 
 test('资产引用与文件存在一致: favicon / og-image / gallery', () => {
   const html = SURFACE['index.html'];
   assert.ok(existsSync(join(ROOT, 'favicon.png')), 'favicon.png 存在');
-  assert.ok(html.includes('href="favicon.png?v=432"'), 'favicon 引用在场');
+  assert.ok(html.includes('href="favicon.png?v=433"'), 'favicon 引用在场');
   assert.ok(existsSync(join(ROOT, 'og-image.png')), 'og-image.png 存在');
   assert.ok(html.includes('https://botu.openclawd.co/og-image.png'), 'og:image 引用在场');
   const files = [...html.matchAll(/src="gallery\/([^"?]+)\?v=/g)].map((m) => m[1]);

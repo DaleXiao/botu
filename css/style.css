@@ -113,10 +113,16 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 .work { max-width: 680px; padding: 32px 28px; }
 .pair { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; }
 .slot { margin: 0; }
-.slot img {
+/* SPEC-433 W3': 结果框用内联 SVG 占位（随主题 currentColor 着色），图均动态渲染 — 任何状态无空 src <img> */
+.slotbox {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 240px; min-height: 160px;
+}
+.slotbox img {
   max-width: 240px; width: 100%; height: auto; display: block;
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel2);
 }
+.slotbox .ph { width: 96px; height: 96px; color: var(--muted); opacity: 0.55; }
 .slot figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 10px; }
 .arrow { color: var(--muted); font-size: 1.2rem; }
 .meta { color: var(--muted); font-size: 0.82rem; margin: 14px 0 0; font-variant-numeric: tabular-nums; }
@@ -176,7 +182,8 @@ footer .copy { margin: 0; font-size: 0.78rem; }
 /* ── responsive ───────────────────────────────── */
 @media (max-width: 560px) {
   body { font-size: 14.5px; }
-  .slot img { max-width: 40vw; }
+  .slotbox { min-width: 0; }
+  .slotbox img { max-width: 40vw; }
   .hero .tagline { font-size: 1.25rem; }
   .work { padding: 22px 16px; }
   .dropzone { padding: 40px 18px; }
