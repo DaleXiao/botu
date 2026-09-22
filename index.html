@@ -22,8 +22,8 @@
 <meta name="twitter:title" content="botu — Bot Icon Generator · 角色图生成机器人图标">
 <meta name="twitter:description" content="上传角色图，AI 生成极简机器人风格 bot icon。免费、无需注册。">
 <meta name="twitter:image" content="https://botu.openclawd.co/og-image.png">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf5ee">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1922">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f1e7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1117">
 <link rel="stylesheet" href="css/style.css?v=431">
 <script type="application/ld+json">
 {
@@ -42,60 +42,71 @@
 </head>
 <body>
 <header class="topbar">
-  <span class="brand" data-i18n="appTitle">botu</span>
-  <button id="langBtn" type="button" class="pill" data-i18n="langBtn">EN</button>
+  <span class="brand"><span class="ps1" aria-hidden="true">$</span> <span data-i18n="appTitle">botu</span><span class="cursor" aria-hidden="true">▮</span></span>
+  <div class="topbtns">
+    <button id="langBtn" type="button" class="pill" data-i18n="langBtn">EN</button>
+  </div>
 </header>
 <main>
   <h1 class="sr-only">Bot Icon Generator — 角色图生成极简机器人图标，免费在线，无需注册</h1>
-  <section class="hero">
-    <h2 data-i18n="tagline">把任意角色图变成极简 bot icon</h2>
-    <p class="sub" data-i18n="subTagline">AI 图生图 · 保留发型轮廓、标志配色与关键配饰 · 约 3-4 分钟出图</p>
+  <section class="hero termwin">
+    <div class="termbar" aria-hidden="true"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="termpath">botu — /bin/generate</span></div>
+    <div class="termbody">
+      <p class="line cmd"><span class="ps1" aria-hidden="true">$</span> botu --generate<span class="cursor" aria-hidden="true">▮</span></p>
+      <h2 class="line"><span aria-hidden="true"># </span><span class="tagn" data-i18n="tagline">把任意角色图变成极简 bot icon</span></h2>
+      <p class="sub line" data-i18n="subTagline">AI 图生图 · 保留发型轮廓、标志配色与关键配饰 · 约 3-4 分钟出图</p>
+    </div>
   </section>
   <div id="errBox" class="errbox" role="alert" hidden></div>
+  <p id="quotaLine" class="quota" role="status" hidden></p>
   <section id="dropZone" class="card dropzone" role="button" tabindex="0">
-    <div class="dz-icon" aria-hidden="true">🤖</div>
-    <p class="dz-title" data-i18n="dropTitle">拖拽 / 粘贴 / 点击选择角色图</p>
+    <pre class="dz-ascii" aria-hidden="true">╭───────────╮
+│ ▮       ▮ │
+╰───────────╯</pre>
+    <p class="dz-title"><span class="ps1" aria-hidden="true">&gt;</span> <span data-i18n="dropTitle">拖拽 / 粘贴 / 点击选择角色图</span></p>
     <p class="dz-hint" data-i18n="dropHint">支持 JPEG · PNG · WebP</p>
   </section>
   <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-  <section id="workArea" class="card work" hidden>
-    <div class="pair">
-      <figure class="slot"><img id="srcPreview" alt="before"><figcaption data-i18n="beforeLabel">原图</figcaption></figure>
-      <div class="arrow" aria-hidden="true">→</div>
-      <figure class="slot"><img id="resultImg" alt="after" hidden><figcaption data-i18n="afterLabel">bot icon</figcaption></figure>
-    </div>
-    <p id="fileMeta" class="meta"></p>
-    <p id="idleHint" class="hint" data-i18n="idleHint">点击「生成图标」开始</p>
-    <div id="loadingBox" class="loading" hidden>
-      <div class="spinner" aria-hidden="true"></div>
-      <p class="loading-note" data-i18n="loadingNote">生成约需 3-4 分钟，请不要关闭页面</p>
-      <p id="elapsedBox" class="elapsed"></p>
-      <p id="loadingMsg" class="hintmsg"></p>
-    </div>
-    <div class="btnrow">
-      <button id="resetBtn" type="button" class="pill" data-i18n="newImage">换一张</button>
-      <button id="genBtn" type="button" class="btn primary" data-i18n="generate">生成图标</button>
-      <button id="regenBtn" type="button" class="btn" data-i18n="regenerate" hidden>再生成</button>
-      <a id="dlBtn" class="btn primary" download="botu-icon.png" data-i18n="download" hidden>下载 PNG</a>
+  <section id="workArea" class="card work termwin" hidden>
+    <div class="termbar" aria-hidden="true"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="termpath">botu — session</span></div>
+    <div class="termbody">
+      <div class="pair">
+        <figure class="slot"><img id="srcPreview" alt="before"><figcaption>[ <span data-i18n="beforeLabel">原图</span> ]</figcaption></figure>
+        <div class="arrow" aria-hidden="true">→</div>
+        <figure class="slot"><img id="resultImg" alt="after" hidden><figcaption>[ <span data-i18n="afterLabel">bot icon</span> ]</figcaption></figure>
+      </div>
+      <p id="fileMeta" class="meta"></p>
+      <p id="idleHint" class="hint" data-i18n="idleHint">点击「生成图标」开始</p>
+      <div id="loadingBox" class="loading" hidden>
+        <p class="loadline"><span id="spin" class="spin" aria-hidden="true"></span> <span data-i18n="loadingNote">生成约需 3-4 分钟，请不要关闭页面</span></p>
+        <p id="elapsedBox" class="elapsed"></p>
+        <p id="loadingMsg" class="hintmsg"></p>
+      </div>
+      <div class="btnrow">
+        <button id="resetBtn" type="button" class="btn" data-i18n="newImage">换一张</button>
+        <button id="genBtn" type="button" class="btn primary" data-i18n="generate">生成图标</button>
+        <button id="regenBtn" type="button" class="btn" data-i18n="regenerate" hidden>再生成</button>
+        <a id="dlBtn" class="btn primary" download="botu-icon.png" data-i18n="download" hidden>下载 PNG</a>
+      </div>
     </div>
   </section>
   <section class="gallery">
-    <h2 data-i18n="galleryTitle">画廊 · 效果一览</h2>
+    <h2><span class="ps1" aria-hidden="true">$</span> ls ./gallery <span class="dim">— <span data-i18n="galleryTitle">画廊 · 效果一览</span></span></h2>
     <p class="sub" data-i18n="gallerySub">左边是原始角色图，右边是 botu 生成的极简 bot icon</p>
     <div class="grid">
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-1.png?v=431" width="512" height="512" alt="orange tabby cat character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-1.png?v=431" width="512" height="512" alt="orange tabby cat minimal bot icon" loading="lazy"></div><figcaption data-i18n="cap1">橘猫</figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-2.png?v=431" width="512" height="512" alt="shiba inu character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-2.png?v=431" width="512" height="512" alt="shiba inu minimal bot icon" loading="lazy"></div><figcaption data-i18n="cap2">柴犬</figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-3.png?v=431" width="512" height="512" alt="girl with bun hairstyle character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-3.png?v=431" width="512" height="512" alt="girl with bun minimal bot icon" loading="lazy"></div><figcaption data-i18n="cap3">丸子头女孩</figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-4.png?v=431" width="512" height="512" alt="penguin character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-4.png?v=431" width="512" height="512" alt="penguin minimal bot icon" loading="lazy"></div><figcaption data-i18n="cap4">企鹅</figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-5.png?v=431" width="512" height="512" alt="fox character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-5.png?v=431" width="512" height="512" alt="fox minimal bot icon" loading="lazy"></div><figcaption data-i18n="cap5">狐狸</figcaption></figure>
-      <figure class="gcard"><div class="pair sm"><img src="gallery/char-6.png?v=431" width="512" height="512" alt="robot assistant character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-6.png?v=431" width="512" height="512" alt="robot assistant minimal bot icon" loading="lazy"></div><figcaption data-i18n="cap6">机器人助手</figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-1.png?v=431" width="512" height="512" alt="orange tabby cat character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-1.png?v=431" width="512" height="512" alt="orange tabby cat minimal bot icon" loading="lazy"></div><figcaption><span class="idx">[01]</span> <span data-i18n="cap1">橘猫</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-2.png?v=431" width="512" height="512" alt="shiba inu character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-2.png?v=431" width="512" height="512" alt="shiba inu minimal bot icon" loading="lazy"></div><figcaption><span class="idx">[02]</span> <span data-i18n="cap2">柴犬</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-3.png?v=431" width="512" height="512" alt="girl with bun hairstyle character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-3.png?v=431" width="512" height="512" alt="girl with bun minimal bot icon" loading="lazy"></div><figcaption><span class="idx">[03]</span> <span data-i18n="cap3">丸子头女孩</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-4.png?v=431" width="512" height="512" alt="penguin character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-4.png?v=431" width="512" height="512" alt="penguin minimal bot icon" loading="lazy"></div><figcaption><span class="idx">[04]</span> <span data-i18n="cap4">企鹅</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-5.png?v=431" width="512" height="512" alt="fox character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-5.png?v=431" width="512" height="512" alt="fox minimal bot icon" loading="lazy"></div><figcaption><span class="idx">[05]</span> <span data-i18n="cap5">狐狸</span></figcaption></figure>
+      <figure class="gcard"><div class="pair sm"><img src="gallery/char-6.png?v=431" width="512" height="512" alt="robot assistant character" loading="lazy"><div class="arrow" aria-hidden="true">→</div><img src="gallery/icon-6.png?v=431" width="512" height="512" alt="robot assistant minimal bot icon" loading="lazy"></div><figcaption><span class="idx">[06]</span> <span data-i18n="cap6">机器人助手</span></figcaption></figure>
     </div>
   </section>
 </main>
 <footer>
-  <p data-i18n="seoFooter">botu 是免费的在线 bot icon 生成器：上传任意角色图片，AI 自动提取发型轮廓、标志配色与关键配饰，生成扁平矢量风格的极简机器人图标，支持 PNG 下载。免费、无需注册。</p>
-  <p class="footnote" data-i18n="footerNote">botu · 由 AI 图生图驱动 · 免费、无需注册</p>
-  <p class="copy">© 2026 botu · openclawd.co</p>
+  <p class="foot-seo" data-i18n="seoFooter">botu 是免费的在线 bot icon 生成器：上传任意角色图片，AI 自动提取发型轮廓、标志配色与关键配饰，生成扁平矢量风格的极简机器人图标，支持 PNG 下载。免费、无需注册。</p>
+  <p class="footnote"><span class="ps1" aria-hidden="true">$</span> <span data-i18n="footerNote">botu · 由 AI 图生图驱动 · 免费、无需注册</span></p>
+  <p class="copy">© 2026 botu · openclawd.co — <span class="ok">[OK]</span> exit 0</p>
 </footer>
 <script type="module" src="js/app.js?v=431"></script>
 </body>
