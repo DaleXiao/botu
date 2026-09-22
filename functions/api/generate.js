@@ -89,9 +89,15 @@ export async function jobWrite(env, id, val) {
   }
 }
 
-// 错误脱敏：剥 URL（防上游 signed URL 泄漏）、截断 200 字符
+// 错误脱敏：剥 URL / 凭证样 token / 上游域名，截断 200 字符 — 任何响应与 job 值不得泄漏上游细节
 export function sanitizeError(msg) {
-  return String(msg == null ? '' : msg).replace(/https?:\/\/\S+/gi, '[url]').slice(0, 200);
+  return String(msg == null ? '' : msg)
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/sk-[A-Za-z0-9_-]+/gi, '[redacted]')
+    .replace(/Signature=[^\s&"']*/gi, '[redacted]')
+    .replace(/x-oss-[A-Za-z0-9_-]+/gi, '[redacted]')
+    .replace(/dashscope/gi, '[upstream]')
+    .slice(0, 200);
 }
 
 export const ICON_PROMPT = `[목표]
