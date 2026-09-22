@@ -38,11 +38,15 @@ function currentTheme() {
   return a === 'light' ? 'light' : 'dark';
 }
 
+// SPEC-436: target-state icons (icon forge semantics) — dark shows sun (click to go light), light shows moon (click to go dark)
+const SUN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:middle"><path d="M12 3v1.5M12 19.5V21M4.219 4.219l1.061 1.061M17.72 17.72l1.06 1.06M3 12h1.5M19.5 12H21M4.219 19.781l1.061-1.061M17.72 6.28l1.06-1.06"/><circle cx="12" cy="12" r="4.5"/></svg>';
+const MOON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:middle"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>';
+
 function renderThemeBtn() {
   const b = $('themeBtn');
   if (!b) return;
   const dark = currentTheme() === 'dark';
-  b.textContent = dark ? '☾' : '☀';
+  b.innerHTML = dark ? SUN_SVG : MOON_SVG;
   const aria = dark
     ? tt('themeAriaToLight', 'switch to light theme')
     : tt('themeAriaToDark', 'switch to dark theme');
