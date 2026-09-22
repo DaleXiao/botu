@@ -31,8 +31,9 @@ test('关键键在场（SEO/UI/错误/画廊/footer）', () => {
     'beforeLabel', 'afterLabel', 'idleHint', 'generate', 'regenerate', 'download', 'newImage',
     'loadingNote', 'elapsedFmt', 'fileMetaFmt', 'errRead', 'errType', 'err400', 'err413', 'err500',
     'err502', 'errNetwork', 'errGeneric', 'galleryTitle', 'gallerySub', 'cap1', 'cap2', 'cap3',
-    'cap4', 'cap5', 'cap6', 'footerNote', 'seoFooter',
-    'err429', 'themeAriaToLight', 'themeAriaToDark', 'quotaFmt', 'quotaOut']) {
+    'cap4', 'footerNote', 'seoFooter',
+    'err429', 'themeAriaToLight', 'themeAriaToDark', 'quotaFmt', 'quotaOut',
+    'errTimeout', 'errJobFailed', 'errJobGone']) {
     assert.ok(k in DICT.zh, `zh.${k}`);
     assert.ok(k in DICT.en, `en.${k}`);
   }

@@ -159,14 +159,16 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 .gallery { margin-top: 72px; }
 .gallery h2 { text-align: center; font-size: 1.15rem; color: var(--bright); margin: 0 0 8px; font-weight: 600; }
 .gallery > .sub { text-align: center; margin-bottom: 28px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+/* SPEC-433 W4: 4 样张 2×2 网格；卡内前后对比强制横向（nowrap），窄屏 ≤640px 降 1 列仍横向 */
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .gcard {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 20px 16px; margin: 0; transition: border-color 0.15s;
 }
 .gcard:hover { border-color: var(--accent); }
-.gcard .pair.sm { gap: 10px; }
-.gcard .pair.sm img { max-width: 96px; border-radius: 10px; border: 1px solid var(--line); height: auto; }
+.gcard .pair.sm { gap: 12px; flex-wrap: nowrap; }
+.gcard .pair.sm img { flex: 1 1 0; min-width: 0; width: 100%; max-width: 170px; border-radius: 10px; border: 1px solid var(--line); height: auto; }
+.gcard .pair.sm .arrow { flex: none; }
 .gcard figcaption { color: var(--muted); font-size: 0.82rem; margin-top: 12px; text-align: center; }
 .gcard figcaption .idx { color: var(--accent2); margin-right: 6px; font-variant-numeric: tabular-nums; }
 
@@ -180,6 +182,9 @@ footer .footnote { margin: 16px 0 4px; color: var(--ink); }
 footer .copy { margin: 0; font-size: 0.78rem; }
 
 /* ── responsive ───────────────────────────────── */
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 560px) {
   body { font-size: 14.5px; }
   .slotbox { min-width: 0; }
