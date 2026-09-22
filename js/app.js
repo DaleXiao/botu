@@ -1,7 +1,7 @@
 // app.js — T-730 站点接线：上传 → 压缩 → 预览 → 生成 → 结果/下载
 // loading 态：转圈 + 已等待秒数 + 轮换文案，明确提示 ~3-4 分钟
-import { DICT, detectLang, applyLang } from './i18n.js?v=430';
-import { compressImage, ACCEPT_MIME } from './upload.js?v=430';
+import { DICT, detectLang, applyLang } from './i18n.js?v=431';
+import { compressImage, ACCEPT_MIME } from './upload.js?v=431';
 
 const $ = (id) => document.getElementById(id);
 

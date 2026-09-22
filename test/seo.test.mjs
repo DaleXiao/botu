@@ -1,5 +1,5 @@
 // test/seo.test.mjs — SPEC-430 SEO 静态断言
-// head 全套 / sr-only h1 / footer 双语 / robots / sitemap / og-image IHDR / 零外链 / ?v=430 版本化 / gallery 入库
+// head 全套 / sr-only h1 / footer 双语 / robots / sitemap / og-image IHDR / 零外链 / ?v=431 版本化 / gallery 入库
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -124,13 +124,13 @@ test('零外链: 全部 src/href 为相对路径（canonical 除外）', () => {
   }
 });
 
-test('资产版本化: css/js/favicon/gallery 均带 ?v=430', () => {
-  for (const a of ['css/style.css?v=430', 'js/app.js?v=430', 'favicon.png?v=430']) {
+test('资产版本化: css/js/favicon/gallery 均带 ?v=431', () => {
+  for (const a of ['css/style.css?v=431', 'js/app.js?v=431', 'favicon.png?v=431']) {
     assert.ok(html.includes(`"${a}"`), `versioned ref missing: ${a}`);
   }
   const galleryRefs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);
   assert.equal(galleryRefs.length, 12, '12 gallery imgs');
-  for (const r of galleryRefs) assert.match(r, /\?v=430$/, r);
+  for (const r of galleryRefs) assert.match(r, /\?v=431$/, r);
 });
 
 test('gallery 成品: 6 对 char/icon png 全部存在且非空', () => {
