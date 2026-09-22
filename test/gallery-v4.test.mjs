@@ -1,5 +1,5 @@
 // test/gallery-v4.test.mjs — SPEC-433/T-733 W4+W3' 静态断言
-// gallery 恰 4 条目 01–04 / 被删样张文件不存在且零引用 / 存留 8 文件 md5 == main 原值 /
+// gallery 恰 4 条目 01–04 / 被删样张文件不存在且零引用 / 存留 8 WebP md5 == SPEC-437 终值 /
 // 卡内横向结构（DOM 顺序 + nowrap）/ 2×2 网格 + 窄屏 1 列 / W3' 结果框内联 SVG 占位、无空 src <img>
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,22 +36,25 @@ test('被删样张（02 Shiba / 05 Fox）文件不存在且全站零引用', () 
   }
 });
 
-test('存留 8 文件 md5 == origin/main 原值（字节不动区）', () => {
+test('存留 8 WebP md5 == SPEC-437 终值（字节不动区）；512px PNG 已退役', () => {
   const ORIG = {
-    'gallery/icon-1.png': 'fc40f351965e7210a50261b1d447d79e',
-    'gallery/icon-3.png': '14f36d63a2b5576db7f7986b4af36680',
-    'gallery/icon-4.png': '67f4594df9d36a4a0629f6df3df9f9c8',
-    'gallery/icon-6.png': 'cd881eb59db94e0171a733f43ce6464c',
-    'gallery/char-1.png': 'b616a42679b2b446a03f7268172c81b5',
-    'gallery/char-3.png': '43f483a294c50591cc41ff5ff1a986c3',
-    'gallery/char-4.png': 'a9b0a508e9d9057a7514f25d34d6346d',
-    'gallery/char-6.png': '83369818c25aed35ff591c0d7039fea8',
+    'gallery/icon-1.webp': '6ac6ab74c0217941eb773bf886675dee',
+    'gallery/icon-3.webp': 'ad67f9e8b552779a365d5079629afd37',
+    'gallery/icon-4.webp': '04ced5895b37ae4fc7cbec5e57acd9b7',
+    'gallery/icon-6.webp': 'd54d04363924fd3613f5372c7c5546a8',
+    'gallery/char-1.webp': '180dcaeb4fcfa0c192a7fef281a7fc6e',
+    'gallery/char-3.webp': '8ae57f22a682dd9e8f7ddcbea24dea7b',
+    'gallery/char-4.webp': 'f04678c56a08fe5724c60c1839967481',
+    'gallery/char-6.webp': '8f5d2b17c14b410f7b3441b0da6c7df1',
   };
   for (const [p, h] of Object.entries(ORIG)) assert.equal(md5(p), h, `${p} 被动过`);
+  for (const n of ['icon-1', 'icon-3', 'icon-4', 'icon-6', 'char-1', 'char-3', 'char-4', 'char-6']) {
+    assert.equal(existsSync(join(ROOT, `gallery/${n}.png`)), false, `gallery/${n}.png 应已退役（SPEC-437 WebP 化）`);
+  }
 });
 
 test('卡内横向结构：char img → 水平箭头 → icon img（同编号成对），CSS nowrap 强制不换行', () => {
-  const re = /<div class="pair sm"><img src="gallery\/char-(\d+)\.png[^"]*"[^>]*><div class="arrow"[^>]*>→<\/div><img src="gallery\/icon-\1\.png[^"]*"[^>]*><\/div>/g;
+  const re = /<div class="pair sm"><img src="gallery\/char-(\d+)\.webp[^"]*"[^>]*><div class="arrow"[^>]*>→<\/div><img src="gallery\/icon-\1\.webp[^"]*"[^>]*><\/div>/g;
   const nums = [...html.matchAll(re)].map((m) => Number(m[1]));
   assert.deepEqual(nums, [1, 3, 4, 6], '4 卡均为 输入图→箭头→生成图 横向 DOM 顺序');
   assert.match(css, /\.gcard \.pair\.sm \{[^}]*flex-wrap: nowrap/, '卡内对比禁 wrap（v3 纵向堆叠破因）');

@@ -57,32 +57,32 @@ test('wrangler.toml: compatibility_date + nodejs_compat 在场', () => {
   assert.match(w, /^compatibility_flags = \["nodejs_compat"\]$/m);
 });
 
-test('gallery 换图锚: icon-1 md5 == v3 终值且 ≤ 500000B（icon-2/5 已随 SPEC-433 W4 删除）', () => {
-  assert.equal(md5('gallery/icon-1.png'), 'fc40f351965e7210a50261b1d447d79e');
-  assert.ok(readFileSync(join(ROOT, 'gallery/icon-1.png')).length <= 500000, 'icon-1 size gate');
+test('gallery 换图锚: icon-1 WebP md5 == SPEC-437 终值且 ≤ 120000B（PNG 已退役；icon-2/5 已随 SPEC-433 W4 删除）', () => {
+  assert.equal(md5('gallery/icon-1.webp'), '6ac6ab74c0217941eb773bf886675dee');
+  assert.ok(readFileSync(join(ROOT, 'gallery/icon-1.webp')).length <= 120000, 'icon-1 size gate');
 });
 
-test('gallery 不动锚: icon-3/4/6 + char-1/3/4/6 md5 == 原值（SPEC-433 W4 后存留集）', () => {
+test('gallery 不动锚: icon-3/4/6 + char-1/3/4/6 WebP md5 == SPEC-437 终值（存留集）', () => {
   const ORIG = {
-    'gallery/icon-3.png': '14f36d63a2b5576db7f7986b4af36680',
-    'gallery/icon-4.png': '67f4594df9d36a4a0629f6df3df9f9c8',
-    'gallery/icon-6.png': 'cd881eb59db94e0171a733f43ce6464c',
-    'gallery/char-1.png': 'b616a42679b2b446a03f7268172c81b5',
-    'gallery/char-3.png': '43f483a294c50591cc41ff5ff1a986c3',
-    'gallery/char-4.png': 'a9b0a508e9d9057a7514f25d34d6346d',
-    'gallery/char-6.png': '83369818c25aed35ff591c0d7039fea8',
+    'gallery/icon-3.webp': 'ad67f9e8b552779a365d5079629afd37',
+    'gallery/icon-4.webp': '04ced5895b37ae4fc7cbec5e57acd9b7',
+    'gallery/icon-6.webp': 'd54d04363924fd3613f5372c7c5546a8',
+    'gallery/char-1.webp': '180dcaeb4fcfa0c192a7fef281a7fc6e',
+    'gallery/char-3.webp': '8ae57f22a682dd9e8f7ddcbea24dea7b',
+    'gallery/char-4.webp': 'f04678c56a08fe5724c60c1839967481',
+    'gallery/char-6.webp': '8f5d2b17c14b410f7b3441b0da6c7df1',
   };
   for (const [p, h] of Object.entries(ORIG)) assert.equal(md5(p), h, `${p} 被动过`);
 });
 
-test('?v=433 全量在场: css/js/favicon/8 张 gallery 图', () => {
+test('?v=437 在场: css/js/8 张 gallery（favicon 内容未改保持 433）', () => {
   const html = SURFACE['index.html'];
-  for (const a of ['css/style.css?v=433', 'js/app.js?v=433', 'favicon.png?v=433']) {
+  for (const a of ['css/style.css?v=437', 'js/app.js?v=437', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `缺版本化引用: ${a}`);
   }
   const refs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);
   assert.equal(refs.length, 8, '8 张 gallery 图（4 样张 × 前后对比）');
-  for (const r of refs) assert.match(r, /\?v=433$/, r);
+  for (const r of refs) assert.match(r, /\.webp\?v=437$/, r);
 });
 
 test('?v=432 零残留（html/js/css/测试）', () => {
