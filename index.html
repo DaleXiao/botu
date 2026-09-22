@@ -24,6 +24,18 @@
 <meta name="twitter:image" content="https://botu.openclawd.co/og-image.png">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f1e7">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1117">
+<script>
+/* theme pre-apply (SPEC-431 W4): no-flash data-theme; default dark, follow prefers-color-scheme when unset */
+(function () {
+  var t = 'dark';
+  try {
+    var s = localStorage.getItem('botu-theme');
+    if (s === 'light' || s === 'dark') t = s;
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) t = 'light';
+  } catch (e) { /* keep dark */ }
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
 <link rel="stylesheet" href="css/style.css?v=431">
 <script type="application/ld+json">
 {
@@ -44,6 +56,7 @@
 <header class="topbar">
   <span class="brand"><span class="ps1" aria-hidden="true">$</span> <span data-i18n="appTitle">botu</span><span class="cursor" aria-hidden="true">▮</span></span>
   <div class="topbtns">
+    <button id="themeBtn" type="button" class="pill" aria-label="switch theme">[☾ dark]</button>
     <button id="langBtn" type="button" class="pill" data-i18n="langBtn">EN</button>
   </div>
 </header>

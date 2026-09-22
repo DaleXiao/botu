@@ -25,6 +25,37 @@ function t(key) {
   return state.dict[key] ?? DICT.en[key] ?? key;
 }
 
+function tt(key, fb) {
+  const v = t(key);
+  return v === key ? fb : v;
+}
+
+// --- theme (SPEC-431 W4): localStorage botu-theme · default dark · fallback prefers-color-scheme (pre-applied inline in <head>)
+function currentTheme() {
+  const a = document.documentElement.getAttribute('data-theme');
+  return a === 'light' ? 'light' : 'dark';
+}
+
+function renderThemeBtn() {
+  const b = $('themeBtn');
+  if (!b) return;
+  const dark = currentTheme() === 'dark';
+  b.textContent = dark ? '[☾ dark]' : '[☀ light]';
+  const aria = dark
+    ? tt('themeAriaToLight', 'switch to light theme')
+    : tt('themeAriaToDark', 'switch to dark theme');
+  b.setAttribute('aria-label', aria);
+  b.title = aria;
+}
+
+function applyTheme(th) {
+  document.documentElement.setAttribute('data-theme', th);
+  try {
+    localStorage.setItem('botu-theme', th);
+  } catch {}
+  renderThemeBtn();
+}
+
 function fmt(tpl, vars) {
   return String(tpl).replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`));
 }
@@ -178,6 +209,7 @@ function setLang(lang) {
   state.lang = lang;
   state.dict = applyLang(lang);
   renderDynamic();
+  renderThemeBtn();
 }
 
 function pickImageFromList(list) {
@@ -229,6 +261,7 @@ function wire() {
   $('regenBtn').addEventListener('click', generate);
   $('resetBtn').addEventListener('click', resetAll);
   $('langBtn').addEventListener('click', () => setLang(state.lang === 'zh' ? 'en' : 'zh'));
+  $('themeBtn').addEventListener('click', () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
 }
 
 setLang(detectLang());
