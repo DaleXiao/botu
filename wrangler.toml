@@ -3,6 +3,10 @@ pages_build_output_dir = "."
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Gateway 指令（Dale 2026-09-22 19:42）：出图统一走 api-llm gateway（与 icon-forge 同值）
+[vars]
+LLM_GATEWAY_URL = "https://api-llm.openclawd.co"
+
 [[kv_namespaces]]
 binding = "BOTU_RL"
 id = "5f93916e14d44bf687eaa1afc0ee336c"

@@ -3,6 +3,11 @@ main = "src/index.js"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Gateway 指令（Dale 2026-09-22 19:42）：DO 内出图走 api-llm gateway；
+# LLM_SERVICE_TOKEN = worker secret（wrangler secret put LLM_SERVICE_TOKEN --name botu-job-runner，零回显）
+[vars]
+LLM_GATEWAY_URL = "https://api-llm.openclawd.co"
+
 [[kv_namespaces]]
 binding = "BOTU_RL"
 id = "5f93916e14d44bf687eaa1afc0ee336c"

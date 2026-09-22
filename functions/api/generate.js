@@ -5,8 +5,9 @@
 // DashScope 同步出图 2-4min → v4 job 永远 pending（线上 4940b924… 22.5min/66 轮实证）。
 // 触发链：job:<id> pending → img:<id> KV（TTL 1h）→ stub.fetch（x-botu-job/x-botu-ip）→ setAlarm 立即。
 // 核心逻辑在 lib/jobcore.js（本文件 re-export：result.js/tests 既有 import 不变）。
-// DASHSCOPE_API_KEY 存在性校验保留（验证不变）；实际上游调用在 companion worker（其自有 secret 绑定）。
-// 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / key 不出 worker。
+// Gateway 指令（Dale 2026-09-22 19:42）：出图走 api-llm gateway；Pages 侧只校验 LLM_GATEWAY_URL var，
+// LLM_SERVICE_TOKEN 只在 companion worker secret（生成不发生在 Pages invocation 内）。
+// 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / token 不出 worker。
 
 export * from '../../lib/jobcore.js';
 
@@ -32,8 +33,8 @@ export async function onRequestPost({ request, env }) {
     return json({ error: `daily limit exceeded (${DAILY_LIMIT} per IP per day)`, remaining: 0 }, 429);
   }
 
-  const key = env.DASHSCOPE_API_KEY;
-  if (!key) return json({ error: 'server misconfigured: missing DASHSCOPE_API_KEY' }, 500);
+  // Gateway 指令（Dale 2026-09-22 19:42）：出图统一走 api-llm gateway；此处只验 URL var 存在
+  if (!env.LLM_GATEWAY_URL) return json({ error: 'server misconfigured: missing LLM_GATEWAY_URL' }, 500);
 
   // SPEC-435 v5: 建 job 立即返回 — 生成在 companion worker DO alarm handler 内执行，
   // 根治 waitUntil 30s 平台取消（spec §背景 3）。图片载荷走 KV img:<id>（TTL 1h）；

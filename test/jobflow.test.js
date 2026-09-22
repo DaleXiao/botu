@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
-  UPSTREAM_URL, DAILY_LIMIT, JOB_TTL, jobKey, newJobId, jobRead, sanitizeError,
+  UPSTREAM_PATH, DAILY_LIMIT, JOB_TTL, jobKey, newJobId, jobRead, sanitizeError,
   rlKey, utcDay, onRequestPost, onRequestGet, imgKey, IMG_TTL, TIMEOUT_ERROR, MAX_JOB_ATTEMPTS,
 } from '../functions/api/generate.js';
 import { onRequest as resultHandler } from '../functions/api/result.js';
@@ -17,6 +17,9 @@ import { JobRunner } from '../worker/src/index.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const B64 = 'aGVsbG8=';
 const TEST_KEY = ['te'+'st', '_ke'+'y'].join('');
+// Gateway 收敛（Dale 2026-09-22 19:42）：mock api-llm gateway 源
+const GW = 'https://gw.test';
+const GW_URL = GW + UPSTREAM_PATH;
 const IP = '1.2.3.4';
 const DAY = utcDay();
 const RLK = rlKey(IP, DAY);
@@ -58,11 +61,11 @@ function mockKV(initial) {
   };
 }
 
-const okFetch = async (url) => (url === UPSTREAM_URL
+const okFetch = async (url) => (url === GW_URL
   ? Response.json(okUpstream)
   : new Response(pngBytes, { status: 200 }));
 
-const dirtyFetch = async (url) => (url === UPSTREAM_URL
+const dirtyFetch = async (url) => (url === GW_URL
   ? new Response(DIRTY_BODY, { status: 500 })
   : new Response(pngBytes, { status: 200 }));
 
@@ -133,7 +136,7 @@ function mockDO(env) {
 // 标准 env 装配：KV mock + DO mock + fetch mock（POST 集成测试统一入口）
 function envWith({ fetchMock = okFetch, kvInitial } = {}) {
   const kv = mockKV(kvInitial);
-  const env = { DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: fetchMock };
+  const env = { LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding, __fetch: fetchMock };
   const doMock = mockDO(env);
   env.JOB_RUNNER = doMock.binding;
   return { kv, env, doMock };
@@ -251,7 +254,7 @@ test('POST + 慢上游(1500ms)：响应先行 <800ms，alarm 回调后才 done�
 test('POST 非法 JSON → 400；非白名单 mime → 400：均不建 job 不打上游', async () => {
   const kv = mockKV();
   let fetched = 0;
-  const env = { DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding, __fetch: async () => { fetched += 1; return new Response('x'); } };
+  const env = { LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding, __fetch: async () => { fetched += 1; return new Response('x'); } };
   const r1 = await post(env, { body: 'not-json{' });
   assert.equal(r1.status, 400);
   const r2 = await post(env, { body: JSON.stringify({ image_base64: B64, mime: 'image/gif' }) });
@@ -264,7 +267,7 @@ test('POST quota 超限 → 429 {error, remaining:0}：不建 job 不打上游',
   const kv = mockKV({ [RLK]: '5' });
   let fetched = 0;
   const res = await post({
-    DASHSCOPE_API_KEY: TEST_KEY, BOTU_RL: kv.binding,
+    LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding,
     __fetch: async () => { fetched += 1; return new Response('x'); },
   });
   assert.equal(res.status, 429);
@@ -278,7 +281,7 @@ test('POST quota 超限 → 429 {error, remaining:0}：不建 job 不打上游',
 test('POST 无 KV binding → 500 job store unavailable，不打上游（quota 仍 fail-open）', async () => {
   let fetched = 0;
   const res = await post({
-    DASHSCOPE_API_KEY: TEST_KEY,
+    LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY,
     __fetch: async () => { fetched += 1; return new Response('x'); },
   });
   assert.equal(res.status, 500);
@@ -392,7 +395,7 @@ test('泄漏扫描：脏上游 v5 全链路（POST 响应 + alarm 终态 + job �
   for (const [k, v] of ok.kv.store.entries()) if (k.startsWith('job:')) bodies.push(v);
   for (const b of bodies) scanNoLeak(b, '响应/job 值');
   assert.ok(!bodies.some((b) => b.includes('sig=1')), '签名 URL 片段不外泄');
-  // result.js / worker 源码自身无禁词（lib/jobcore.js 含 UPSTREAM_URL 功能常量，属不动区，另行备注）
+  // result.js / worker 源码自身无禁词（lib/jobcore.js 含 sanitizeError 禁词正则与网关路径常量，属功能必需，另行备注）
   const rsrc = readFileSync(join(ROOT, 'functions/api/result.js'), 'utf8');
   scanNoLeak(rsrc, 'result.js 源码');
   const wsrc = readFileSync(join(ROOT, 'worker/src/index.js'), 'utf8');
