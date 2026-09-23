@@ -1,7 +1,7 @@
 // app.js — T-730 站点接线：上传 → 压缩 → 预览 → 生成 → 结果/下载
 // SPEC-433 W3: 生成改异步 job 流 — POST 拿 job_id 后每 3s 轮询 /api/result，上限 6min
 // loading 态：转圈 + 已等待秒数 + 轮换文案；结果框用内联 SVG 占位，done 才渲染 <img>（W3'，任何状态无空 src）
-import { DICT, detectLang, applyLang } from './i18n.js?v=433';
+import { DICT, detectLang, applyLang } from './i18n.js?v=438';
 import { compressImage, ACCEPT_MIME } from './upload.js?v=433';
 
 const $ = (id) => document.getElementById(id);
