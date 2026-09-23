@@ -15,6 +15,7 @@ const state = {
   height: 0,
   kb: 0,
   previewUrl: null,
+  resultUrl: null, // SPEC-441: 当前结果 blob URL（重建/换一张/再生成前 revoke，防泄漏）
   busy: false,
   remaining: null,
   timer: null,
@@ -168,6 +169,11 @@ function renderBefore(url) {
 }
 
 function clearResult() {
+  // SPEC-441: 统一在此 revoke 上一个结果 blob URL — resetBtn/再生成(generate→clearResult)/重建(showResult→clearResult) 三路共用
+  if (state.resultUrl) {
+    URL.revokeObjectURL(state.resultUrl);
+    state.resultUrl = null;
+  }
   const box = $('resultBox');
   const old = box.querySelector('img');
   if (old) old.remove();
@@ -221,9 +227,25 @@ async function pollResult(jobId) {
   showError(t('errTimeout'));
 }
 
+// SPEC-441 / T-741: base64 → blob URL — a[download] 对 data: URL 的下载在 Safari/部分浏览器不生效，统一改 blob
+// b64ToBytes 为纯函数（不触 DOM/URL），具名导出供 node:test 直测（test/download.test.mjs）
+export function b64ToBytes(b64) {
+  if (typeof b64 !== 'string') throw new TypeError('b64ToBytes: expected base64 string');
+  const bin = atob(b64); // 非法 base64 → DOMException(InvalidCharacterError)
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function b64ToBlobUrl(b64, mime) {
+  const blob = new Blob([b64ToBytes(b64)], { type: mime || 'image/png' });
+  return URL.createObjectURL(blob);
+}
+
 function renderDone(data) {
-  const url = 'data:' + (data.mime || 'image/png') + ';base64,' + data.image_base64;
+  const url = b64ToBlobUrl(data.image_base64, data.mime || 'image/png');
   showResult(url);
+  state.resultUrl = url; // showResult→clearResult 已 revoke 旧值，此处登记新 objectURL
   const dl = $('dlBtn');
   dl.href = url;
   dl.hidden = false;
@@ -388,6 +410,9 @@ function wire() {
   $('themeBtn').addEventListener('click', () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
 }
 
-setLang(detectLang());
-wire();
-fetchQuota();
+// SPEC-441: Node(node:test) 导入本模块只取纯函数（b64ToBytes），不执行浏览器接线
+if (typeof document !== 'undefined') {
+  setLang(detectLang());
+  wire();
+  fetchQuota();
+}

@@ -75,9 +75,9 @@ test('gallery 不动锚: icon-3/4/6 + char-1/3/4/6 WebP md5 == SPEC-437 终值�
   for (const [p, h] of Object.entries(ORIG)) assert.equal(md5(p), h, `${p} 被动过`);
 });
 
-test('?v=437 在场: css/js/8 张 gallery（favicon 内容未改保持 433）', () => {
+test('?v=438 css / ?v=439 js / ?v=437 gallery 在场（favicon 内容未改保持 433）', () => {
   const html = SURFACE['index.html'];
-  for (const a of ['css/style.css?v=437', 'js/app.js?v=438', 'favicon.png?v=433']) {
+  for (const a of ['css/style.css?v=438', 'js/app.js?v=439', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `缺版本化引用: ${a}`);
   }
   const refs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);
