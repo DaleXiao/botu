@@ -143,8 +143,10 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 .hintmsg { color: var(--muted); font-size: 0.85rem; margin: 4px 0 0; min-height: 1.4em; }
 
 /* ── buttons ──────────────────────────────────── */
+/* SPEC-442: 恢复 UA [hidden] 语义 —— .btn 等作者样式的 display 会覆盖浏览器默认 [hidden]{display:none}，导致带 hidden 属性的元素仍被渲染 */
+[hidden] { display: none !important; }
 .btnrow { display: flex; gap: 10px; justify-content: center; margin-top: 24px; flex-wrap: wrap; align-items: center; }
-.btnrow .btn { min-width: 11.5em; text-align: center; } /* SPEC-441: 结果态四按钮等宽（顶部 .topbtns pill 不受影响） */
+.btnrow .btn { flex: 1 1 8.5em; max-width: 13em; min-width: 0; text-align: center; padding-left: 10px; padding-right: 10px; } /* SPEC-442: 结果态四按钮 flex 等分单行（替换 SPEC-441 过宽 min-width；顶部 .topbtns pill 不受影响） */
 .btn {
   display: inline-block; border-radius: 8px; padding: 9px 22px;
   font: inherit; font-size: 0.93rem; cursor: pointer; text-decoration: none;
