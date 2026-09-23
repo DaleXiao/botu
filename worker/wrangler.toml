@@ -19,3 +19,9 @@ class_name = "JobRunner"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["JobRunner"]
+
+# SPEC-440/T-742：service binding 直连 api-llm-worker（同 account 4aa1ef6915a58d0680a9ebcf2047683b），
+# 绕过 CF edge ~100s 墙根治 524；仅用于 gateway POST 腿，图片下载腿仍走全局 fetch
+[[services]]
+binding = "API_LLM"
+service = "api-llm-worker"
