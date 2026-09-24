@@ -7,7 +7,6 @@ export const DICT = {
     appTitle: 'botu',
     langBtn: 'EN',
     tagline: '任意角色图 → 极简 bot icon',
-    subTagline: 'AI 重绘 · 发型、配色、小配饰都还在 · 约 3-4 分钟',
     dropTitle: '拖进来，或点击上传',
     dropHint: '可直接粘贴 · JPEG / PNG / WebP',
     dropActive: '松开即载入',
@@ -18,8 +17,6 @@ export const DICT = {
     regenerate: '再生成',
     download: '下载 PNG',
     newImage: '换一张',
-    loadingNote: '约需 3-4 分钟，请留在本页',
-    elapsedFmt: '已等待 {s} 秒',
     loadingHints: [
       '正在理解角色特征…',
       '发型和配色，一个都不少…',
@@ -57,7 +54,6 @@ export const DICT = {
     appTitle: 'botu',
     langBtn: '中文',
     tagline: 'Any character image → minimal bot icon',
-    subTagline: 'Redrawn by AI · hair, colors & little details all kept · ~3-4 min',
     dropTitle: 'Drop it here, or click to browse',
     dropHint: 'Paste works too · JPEG / PNG / WebP',
     dropActive: 'release to load',
@@ -68,8 +64,6 @@ export const DICT = {
     regenerate: 'regenerate',
     download: 'download PNG',
     newImage: 'new image',
-    loadingNote: 'takes ~3-4 min — please keep this tab open',
-    elapsedFmt: 'elapsed {s}s',
     loadingHints: [
       'getting to know your character…',
       'keeping every curl & color…',

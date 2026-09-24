@@ -18,9 +18,7 @@ const state = {
   resultUrl: null, // SPEC-441: 当前结果 blob URL（重建/换一张/再生成前 revoke，防泄漏）
   busy: false,
   remaining: null,
-  timer: null,
   hintTimer: null,
-  startedAt: 0,
   hintIdx: 0,
 };
 
@@ -131,19 +129,11 @@ function resetAll() {
   clearResult();
 }
 
-function updateElapsed() {
-  const s = Math.floor((Date.now() - state.startedAt) / 1000);
-  $('elapsedBox').textContent = fmt(t('elapsedFmt'), { s });
-}
-
 function startLoading() {
-  state.startedAt = Date.now();
   state.hintIdx = 0;
   $('loadingBox').hidden = false;
   $('idleHint').hidden = true;
   $('loadingMsg').textContent = state.dict.loadingHints[0] || '';
-  updateElapsed();
-  state.timer = setInterval(updateElapsed, 1000);
   state.hintTimer = setInterval(() => {
     state.hintIdx = (state.hintIdx + 1) % state.dict.loadingHints.length;
     $('loadingMsg').textContent = state.dict.loadingHints[state.hintIdx];
@@ -151,9 +141,7 @@ function startLoading() {
 }
 
 function stopTimers() {
-  if (state.timer) clearInterval(state.timer);
   if (state.hintTimer) clearInterval(state.hintTimer);
-  state.timer = null;
   state.hintTimer = null;
   $('loadingBox').hidden = true;
 }
@@ -319,7 +307,6 @@ function renderDynamic() {
     ? fmt(t('fileMetaFmt'), { w: state.width, h: state.height, kb: state.kb })
     : '';
   if (state.busy) {
-    updateElapsed();
     $('loadingMsg').textContent = state.dict.loadingHints[state.hintIdx] || '';
   }
   renderQuota();

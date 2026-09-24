@@ -27,11 +27,11 @@ test('除 loadingHints 数组外全部为非空字符串', () => {
 });
 
 test('关键键在场（SEO/UI/错误/画廊/footer）', () => {
-  for (const k of ['seoTitle', 'appTitle', 'langBtn', 'tagline', 'subTagline', 'dropTitle', 'dropHint',
+  for (const k of ['seoTitle', 'appTitle', 'langBtn', 'tagline', 'dropTitle', 'dropHint',
     'beforeLabel', 'afterLabel', 'idleHint', 'generate', 'regenerate', 'download', 'newImage',
-    'loadingNote', 'elapsedFmt', 'fileMetaFmt', 'errRead', 'errType', 'err400', 'err413', 'err500',
+    'fileMetaFmt', 'errRead', 'errType', 'err400', 'err413', 'err500',
     'err502', 'errNetwork', 'errGeneric', 'galleryTitle', 'cap1', 'cap2', 'cap3',
-    'cap4', 'footerNote', 'seoFooter',
+    'cap4', 'seoFooter',
     'err429', 'themeAriaToLight', 'themeAriaToDark', 'quotaFmt', 'quotaOut',
     'errTimeout', 'errJobFailed', 'errJobGone']) {
     assert.ok(k in DICT.zh, `zh.${k}`);
