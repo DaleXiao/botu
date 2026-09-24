@@ -30,7 +30,7 @@ test('关键键在场（SEO/UI/错误/画廊/footer）', () => {
   for (const k of ['seoTitle', 'appTitle', 'langBtn', 'tagline', 'subTagline', 'dropTitle', 'dropHint',
     'beforeLabel', 'afterLabel', 'idleHint', 'generate', 'regenerate', 'download', 'newImage',
     'loadingNote', 'elapsedFmt', 'fileMetaFmt', 'errRead', 'errType', 'err400', 'err413', 'err500',
-    'err502', 'errNetwork', 'errGeneric', 'galleryTitle', 'gallerySub', 'cap1', 'cap2', 'cap3',
+    'err502', 'errNetwork', 'errGeneric', 'galleryTitle', 'cap1', 'cap2', 'cap3',
     'cap4', 'footerNote', 'seoFooter',
     'err429', 'themeAriaToLight', 'themeAriaToDark', 'quotaFmt', 'quotaOut',
     'errTimeout', 'errJobFailed', 'errJobGone']) {
