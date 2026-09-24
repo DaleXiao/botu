@@ -183,7 +183,6 @@ footer {
   max-width: 860px; color: var(--muted); font-size: 0.85rem;
 }
 footer .foot-seo { margin: 0; line-height: 1.8; }
-footer .footnote { margin: 16px 0 4px; color: var(--ink); }
 footer .copy { margin: 0; font-size: 0.78rem; }
 
 /* ── responsive ───────────────────────────────── */

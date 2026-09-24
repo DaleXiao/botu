@@ -45,7 +45,6 @@ export const DICT = {
     cap2: '丸子头女孩',
     cap3: '企鹅',
     cap4: '机器人助手',
-    footerNote: 'botu · AI 生成 · 免费，无需注册',
     seoFooter:
       'botu 是免费的在线 bot icon 生成器：上传角色图，AI 生成极简机器人风格图标，保留发型轮廓与标志配色，支持 PNG 下载。适合聊天机器人头像、Discord/Telegram bot 图标与品牌吉祥物。免费、无需注册。',
   },
@@ -92,7 +91,6 @@ export const DICT = {
     cap2: 'Girl with bun',
     cap3: 'Penguin',
     cap4: 'Robot assistant',
-    footerNote: 'botu · AI-generated · free, no signup',
     seoFooter:
       'botu is a free online bot icon generator: upload a character image and AI redraws it as a minimal robot icon, keeping the hairstyle silhouette, signature colors and key accessories. PNG download. Great for chatbot avatars, Discord/Telegram bot icons and brand mascots. Free, no signup.',
   },
