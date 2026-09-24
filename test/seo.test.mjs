@@ -124,8 +124,8 @@ test('零外链: 全部 src/href 为相对路径（canonical 除外）', () => {
   }
 });
 
-test('资产版本化: css ?v=439 / js ?v=439 / gallery ?v=437，favicon ?v=433（内容未改）', () => {
-  for (const a of ['css/style.css?v=439', 'js/app.js?v=439', 'favicon.png?v=433']) {
+test('资产版本化: css ?v=444 / js ?v=444 / gallery ?v=437，favicon ?v=433（内容未改）', () => {
+  for (const a of ['css/style.css?v=444', 'js/app.js?v=444', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `versioned ref missing: ${a}`);
   }
   const galleryRefs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);

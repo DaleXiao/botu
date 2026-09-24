@@ -168,6 +168,11 @@ function renderBefore(url) {
   box.appendChild(img);
 }
 
+// SPEC-444 F2: resultPh 占位 SVG 模板常量（与 index.html 内联 markup 逐字一致，test/ui-trio.test.mjs pin 住）
+// 根因：SVGElement 无 hidden IDL 属性 —— $('resultPh').hidden = true 只产生 expando 属性、不反射 attribute，
+// SPEC-442 的 [hidden]{display:none!important} 永不命中 → done 态占位符击穿。改物理 remove/重建，CSS :has(img) 兜底双保险。
+const RESULT_PH_SVG = '<svg class="ph" id="resultPh" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.2"/><rect x="8" y="9" width="2.5" height="5.5" rx="1.25" fill="currentColor"/><rect x="13.5" y="9" width="2.5" height="5.5" rx="1.25" fill="currentColor"/></svg>';
+
 function clearResult() {
   // SPEC-441: 统一在此 revoke 上一个结果 blob URL — resetBtn/再生成(generate→clearResult)/重建(showResult→clearResult) 三路共用
   if (state.resultUrl) {
@@ -177,6 +182,8 @@ function clearResult() {
   const box = $('resultBox');
   const old = box.querySelector('img');
   if (old) old.remove();
+  // SPEC-444 F2: 占位不存在则用常量重建并 prepend（与 index.html 初始态一致：resultBox 首子节点为 SVG）
+  if (!$('resultPh')) box.insertAdjacentHTML('afterbegin', RESULT_PH_SVG);
   $('resultPh').hidden = false;
 }
 
@@ -187,7 +194,9 @@ function showResult(url) {
   img.alt = 'after';
   img.src = url;
   $('resultBox').appendChild(img);
-  $('resultPh').hidden = true;
+  // SPEC-444 F2: done 态零占位符 — 物理移除（hidden 赋值对 SVGElement 无效，见 RESULT_PH_SVG 注释）
+  const ph = $('resultPh');
+  if (ph) ph.remove();
 }
 
 // SPEC-433 W3: 3s 轮询 /api/result，预算 6min；网络抖动/5xx 视为瞬时继续轮，404/error/超时给可重试提示

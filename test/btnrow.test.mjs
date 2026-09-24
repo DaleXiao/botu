@@ -1,5 +1,5 @@
 // test/btnrow.test.mjs — SPEC-442 / T-743 按钮行修复静态断言
-// 覆盖: [hidden] 语义恢复规则在场 / .btnrow .btn flex 等分（旧 min-width 策略零残留）/ style.css ?v=439 版本化
+// 覆盖: [hidden] 语义恢复规则在场 / .btnrow .btn flex 等分（旧 min-width 策略零残留）/ style.css ?v=444 版本化
 // 运行: repo root `node --test`（与既有测试一致，勿加目录参数）
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,8 +34,8 @@ test('SPEC-441 旧 min-width 11.5em 策略零残留', () => {
   assert.ok(!css.includes('11.5em'), 'style.css 全文不含 11.5em');
 });
 
-test('index.html: style.css 版本化 ?v=439（app.js?v=439 不动）', () => {
-  assert.match(html, /css\/style\.css\?v=439/, 'style.css?v=439');
-  assert.ok(!html.includes('style.css?v=438'), '旧版本引用零残留');
-  assert.match(html, /js\/app\.js\?v=439/, 'app.js?v=439 保留');
+test('index.html: style.css 版本化 ?v=444（app.js?v=444 同步）', () => {
+  assert.match(html, /css\/style\.css\?v=444/, 'style.css?v=444');
+  assert.ok(!html.includes('style.css?v=439'), '旧版本引用零残留');
+  assert.match(html, /js\/app\.js\?v=444/, 'app.js?v=444');
 });
