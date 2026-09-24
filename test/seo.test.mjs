@@ -76,14 +76,15 @@ test('sr-only h1 存在且含双语关键词，CSS 有 .sr-only 工具类', () =
   assert.match(css, /\.sr-only\s*\{/);
 });
 
-test('footer: 可爬双语文案（seoFooter/footerNote 双字典 + HTML 挂 data-i18n）', () => {
+test('footer: seoFooter 双字典可爬 + HTML sr-only 视觉隐藏；footerNote 零残留', () => {
   for (const lang of ['zh', 'en']) {
     assert.ok(DICT[lang].seoFooter.length > 60, `${lang}.seoFooter`);
     assert.match(DICT[lang].seoFooter, /botu/i);
-    assert.ok(DICT[lang].footerNote.length > 8, `${lang}.footerNote`);
+    assert.ok(!('footerNote' in DICT[lang]), `${lang}.footerNote 应已删除`);
   }
-  assert.match(html, /data-i18n="seoFooter"/);
-  assert.match(html, /data-i18n="footerNote"/);
+  assert.match(html, /<p class="foot-seo sr-only" data-i18n="seoFooter">/);
+  assert.doesNotMatch(html, /footerNote/);
+  assert.doesNotMatch(html, /footnote/);
 });
 
 test('robots.txt: allow all + Sitemap 行', () => {
@@ -124,8 +125,8 @@ test('零外链: 全部 src/href 为相对路径（canonical 除外）', () => {
   }
 });
 
-test('资产版本化: css ?v=444 / js ?v=444 / gallery ?v=437，favicon ?v=433（内容未改）', () => {
-  for (const a of ['css/style.css?v=444', 'js/app.js?v=444', 'favicon.png?v=433']) {
+test('资产版本化: css ?v=445 / js ?v=445 / gallery ?v=437，favicon ?v=433（内容未改）', () => {
+  for (const a of ['css/style.css?v=445', 'js/app.js?v=445', 'favicon.png?v=433']) {
     assert.ok(html.includes(`"${a}"`), `versioned ref missing: ${a}`);
   }
   const galleryRefs = [...html.matchAll(/src="(gallery\/[^"]+)"/g)].map((m) => m[1]);

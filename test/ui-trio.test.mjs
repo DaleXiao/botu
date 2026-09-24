@@ -1,7 +1,7 @@
 // SPEC-444 / T-745: botu UI 三件套静态断言
 // F1 work 区横排（.pair nowrap + slot 收缩 + img min(240px,38vw)）
 // F2 done 态零占位符（resultPh 物理 remove/重建 + #resultBox:has(img) .ph CSS 兜底）
-// F3 gallerySub 三处零残留 / F4 资产版本 v=444
+// F3 gallerySub 三处零残留 / F4 资产版本 v=445
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -61,10 +61,10 @@ test('F3: gallerySub 在 index.html / js/i18n.js / test/i18n.test.js 三处零�
 });
 
 // ── F4 资产版本 bump ────────────────────────────
-test('F4: index.html css/js ?v=444 两处 bump、v=439 零残留（favicon ?v=433 / gallery ?v=437 不动）', () => {
-  assert.match(html, /css\/style\.css\?v=444/, 'style.css?v=444');
-  assert.match(html, /js\/app\.js\?v=444/, 'app.js?v=444');
-  assert.ok(!html.includes('v=439'), 'index.html v=439 零残留');
+test('F4: index.html css/js ?v=445 两处 bump、v=444 零残留（favicon ?v=433 / gallery ?v=437 不动）', () => {
+  assert.match(html, /css\/style\.css\?v=445/, 'style.css?v=445');
+  assert.match(html, /js\/app\.js\?v=445/, 'app.js?v=445');
+  assert.ok(!html.includes('v=444'), 'index.html v=444 零残留');
   assert.match(html, /favicon\.png\?v=433/, 'favicon 版本不动');
   const galleryRefs = [...html.matchAll(/src="gallery\/[^"]+"/g)].map((x) => x[0]);
   assert.equal(galleryRefs.length, 8, 'gallery 8 张引用不动');

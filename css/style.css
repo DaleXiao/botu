@@ -79,7 +79,6 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
   font-size: 1.5rem; line-height: 1.4; color: var(--bright);
   font-weight: 600; margin: 0 0 10px; letter-spacing: 0.01em;
 }
-.sub { color: var(--muted); margin: 0; font-size: 0.95rem; }
 
 /* ── dropzone ─────────────────────────────────── */
 .card {
@@ -142,7 +141,6 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
   border-radius: 50%; animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.elapsed { color: var(--muted); font-size: 0.88rem; margin: 8px 0 0; font-variant-numeric: tabular-nums; }
 .hintmsg { color: var(--muted); font-size: 0.85rem; margin: 4px 0 0; min-height: 1.4em; }
 
 /* ── buttons ──────────────────────────────────── */
@@ -185,7 +183,6 @@ footer {
   max-width: 860px; color: var(--muted); font-size: 0.85rem;
 }
 footer .foot-seo { margin: 0; line-height: 1.8; }
-footer .footnote { margin: 16px 0 4px; color: var(--ink); }
 footer .copy { margin: 0; font-size: 0.78rem; }
 
 /* ── responsive ───────────────────────────────── */
