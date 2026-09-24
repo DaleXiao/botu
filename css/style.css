@@ -125,6 +125,8 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel2);
 }
 .slotbox .ph { width: 96px; height: 96px; color: var(--muted); opacity: 0.55; }
+/* SPEC-444 F2 CSS 兜底：done 态零占位符（与 JS 物理 remove 双保险） */
+#resultBox:has(img) .ph { display: none !important; }
 .slot figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 10px; }
 .arrow { color: var(--muted); font-size: 1.2rem; }
 .meta { color: var(--muted); font-size: 0.82rem; margin: 14px 0 0; font-variant-numeric: tabular-nums; }
