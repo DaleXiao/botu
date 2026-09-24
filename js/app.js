@@ -47,8 +47,8 @@ function renderThemeBtn() {
   const dark = currentTheme() === 'dark';
   b.innerHTML = dark ? SUN_SVG : MOON_SVG;
   const aria = dark
-    ? tt('themeAriaToLight', 'switch to light theme')
-    : tt('themeAriaToDark', 'switch to dark theme');
+    ? tt('themeAriaToLight', 'Switch to light theme')
+    : tt('themeAriaToDark', 'Switch to dark theme');
   b.setAttribute('aria-label', aria);
   b.title = aria;
 }
