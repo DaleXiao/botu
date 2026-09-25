@@ -46,7 +46,7 @@ body {
   line-height: 1.7;
   letter-spacing: 0.01em;
 }
-/* SPEC-437 P2-3: tint 随主题 accent（color-mix），禁 rgba 字面量 */
+/* SPEC-437 P2-3: tint follows the theme accent (color-mix); rgba literals forbidden */
 ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 .sr-only {
@@ -111,10 +111,10 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 
 /* ── work area ────────────────────────────────── */
 .work { max-width: 680px; padding: 32px 28px; }
-/* SPEC-444 F1: work 区恒横排 — nowrap + slot 可收缩 + img max-width min(240px,38vw)，≥320px 原图→箭头→生成图不断行（gallery .pair.sm 不动） */
+/* SPEC-444 F1: the work area always stays horizontal — nowrap + shrinkable slots + img max-width min(240px,38vw); from ≥320px the before→arrow→after row never wraps (gallery .pair.sm untouched) */
 .pair { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: nowrap; }
 .slot { margin: 0; flex: 0 1 auto; min-width: 0; }
-/* SPEC-433 W3': 结果框用内联 SVG 占位（随主题 currentColor 着色），图均动态渲染 — 任何状态无空 src <img> */
+/* SPEC-433 W3': the result box uses an inline SVG placeholder (colored via currentColor per theme); both images render dynamically — no empty-src <img> in any state */
 .slotbox {
   display: flex; align-items: center; justify-content: center;
   min-width: 0; min-height: 160px;
@@ -124,7 +124,7 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel2);
 }
 .slotbox .ph { width: 96px; height: 96px; color: var(--muted); opacity: 0.55; }
-/* SPEC-444 F2 CSS 兜底：done 态零占位符（与 JS 物理 remove 双保险） */
+/* SPEC-444 F2 CSS fallback: zero placeholders in the done state (double safety with the JS physical remove) */
 #resultBox:has(img) .ph { display: none !important; }
 .slot figcaption { color: var(--muted); font-size: 0.8rem; margin-top: 10px; }
 .arrow { color: var(--muted); font-size: 1.2rem; }
@@ -133,7 +133,7 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 
 /* ── loading ──────────────────────────────────── */
 .loading { margin-top: 18px; }
-.loadline { margin: 0; color: var(--bright); font-size: 1.05rem; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 10px; } /* SPEC-441: loading 态视觉主行 */
+.loadline { margin: 0; color: var(--bright); font-size: 1.05rem; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 10px; } /* SPEC-441: main visual line of the loading state */
 .spin { display: inline-block; width: 15px; height: 15px; flex: none; }
 .spin::after {
   content: ""; display: block; width: 100%; height: 100%;
@@ -144,10 +144,10 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 .hintmsg { color: var(--muted); font-size: 0.85rem; margin: 4px 0 0; min-height: 1.4em; }
 
 /* ── buttons ──────────────────────────────────── */
-/* SPEC-442: 恢复 UA [hidden] 语义 —— .btn 等作者样式的 display 会覆盖浏览器默认 [hidden]{display:none}，导致带 hidden 属性的元素仍被渲染 */
+/* SPEC-442: restore UA [hidden] semantics — author styles like .btn set display and override the browser default [hidden]{display:none}, leaving elements with the hidden attribute still rendered */
 [hidden] { display: none !important; }
 .btnrow { display: flex; gap: 10px; justify-content: center; margin-top: 24px; flex-wrap: wrap; align-items: center; }
-.btnrow .btn { flex: 1 1 8.5em; max-width: 13em; min-width: 0; text-align: center; padding-left: 10px; padding-right: 10px; } /* SPEC-442: 结果态四按钮 flex 等分单行（替换 SPEC-441 过宽 min-width；顶部 .topbtns pill 不受影响） */
+.btnrow .btn { flex: 1 1 8.5em; max-width: 13em; min-width: 0; text-align: center; padding-left: 10px; padding-right: 10px; } /* SPEC-442: the four result-state buttons share one row via flex (replaces the too-wide SPEC-441 min-width; the top .topbtns pills are unaffected) */
 .btn {
   display: inline-block; border-radius: 8px; padding: 9px 22px;
   font: inherit; font-size: 0.93rem; cursor: pointer; text-decoration: none;
@@ -164,7 +164,7 @@ main { max-width: 860px; margin: 0 auto; padding: 8px 24px 56px; }
 .gallery { margin-top: 72px; }
 .gallery h2 { text-align: center; font-size: 1.15rem; color: var(--bright); margin: 0 0 8px; font-weight: 600; }
 .gallery > .sub { text-align: center; margin-bottom: 28px; }
-/* SPEC-433 W4: 4 样张 2×2 网格；卡内前后对比强制横向（nowrap），窄屏 ≤640px 降 1 列仍横向 */
+/* SPEC-433 W4: 4 samples in a 2×2 grid; the before/after pair inside a card is forced horizontal (nowrap); narrow screens ≤640px drop to 1 column, still horizontal */
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .gcard {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -190,7 +190,7 @@ footer .copy { margin: 0; font-size: 0.78rem; }
   .grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
-  /* SPEC-437 P2-2: 顶栏 pill 触控目标 ≥44px（iOS HIG），仅移动端，桌面视觉不变 */
+  /* SPEC-437 P2-2: topbar pill touch targets ≥44px (iOS HIG), mobile only, desktop visuals unchanged */
   .pill { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 4px 16px; }
   body { font-size: 14.5px; }
   .hero .tagline { font-size: 1.25rem; }
@@ -199,7 +199,7 @@ footer .copy { margin: 0; font-size: 0.78rem; }
 }
 
 /* ── reduced motion (SPEC-437 P2-1) ─────────── */
-/* spinner 换非前庭 opacity 脉冲，环形色不变仍示意加载中；禁全局 0.01ms kill */
+/* spinner switches to a non-vestibular opacity pulse; the ring color stays and still signals loading; a global 0.01ms kill is forbidden */
 @media (prefers-reduced-motion: reduce) {
   .spin::after { animation: spin-fade 1.4s ease-in-out infinite; }
 }

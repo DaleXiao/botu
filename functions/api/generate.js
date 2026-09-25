@@ -1,13 +1,13 @@
 // functions/api/generate.js — T-730/SPEC-430 · SPEC-433/T-733 v4 · SPEC-435/T-736 v5
-// POST /api/generate {image_base64, mime} → 200 {job_id}：校验/quota 语义与 v3/v4 一致，立即返回。
-// v5：生成执行体迁入 companion worker DO alarm handler（worker/src/index.js JobRunner）——
-// CF waitUntil 在 invocation 结束 30s 后强制取消未 settle Promise（官方 runtime-apis/context 文档），
-// DashScope 同步出图 2-4min → v4 job 永远 pending（线上 4940b924… 22.5min/66 轮实证）。
-// 触发链：job:<id> pending → img:<id> KV（TTL 1h）→ stub.fetch（x-botu-job/x-botu-ip）→ setAlarm 立即。
-// 核心逻辑在 lib/jobcore.js（本文件 re-export：result.js/tests 既有 import 不变）。
-// Gateway 指令（Dale 2026-09-22 19:42）：出图走 api-llm gateway；Pages 侧只校验 LLM_GATEWAY_URL var，
-// LLM_SERVICE_TOKEN 只在 companion worker secret（生成不发生在 Pages invocation 内）。
-// 服务端代理 qwen-image-3.0-pro img2img；OSS 签名 URL / token 不出 worker。
+// POST /api/generate {image_base64, mime} → 200 {job_id}: validation/quota semantics identical to v3/v4, returns immediately.
+// v5: the generation executor moved into the companion worker's DO alarm handler (worker/src/index.js JobRunner) —
+// CF waitUntil force-cancels unsettled promises 30s after the invocation ends (official runtime-apis/context docs),
+// while DashScope synchronous image generation takes 2-4min → v4 jobs stayed pending forever (proven in production: job 4940b924…, 22.5min / 66 poll rounds).
+// Trigger chain: job:<id> pending → img:<id> KV (TTL 1h) → stub.fetch (x-botu-job/x-botu-ip) → setAlarm immediately.
+// Core logic lives in lib/jobcore.js (this file re-exports it: existing imports in result.js/tests stay unchanged).
+// Gateway directive (Dale 2026-09-22 19:42): image generation goes through the api-llm gateway; the Pages side only validates the LLM_GATEWAY_URL var,
+// LLM_SERVICE_TOKEN exists only as a companion-worker secret (generation never happens inside a Pages invocation).
+// Server-side proxy for qwen-image-3.0-pro img2img; OSS signed URLs / tokens never leave the worker.
 
 export * from '../../lib/jobcore.js';
 
@@ -26,19 +26,19 @@ export async function onRequestPost({ request, env }) {
   const v = validateInput(body);
   if (!v.ok) return json({ error: v.error }, v.status);
 
-  // SPEC-431 W6: 每 IP 日限 5 次 — 超限 429；扣费只在生成成功后（DO alarm 内 runJob）
+  // SPEC-431 W6: 5 per IP per day — over the limit → 429; charging happens only after a successful generation (runJob inside the DO alarm)
   const ip = clientIp(request);
   const rlCount = await rlReadCount(env, ip);
   if (rlCount >= DAILY_LIMIT) {
     return json({ error: `daily limit exceeded (${DAILY_LIMIT} per IP per day)`, remaining: 0 }, 429);
   }
 
-  // Gateway 指令（Dale 2026-09-22 19:42）：出图统一走 api-llm gateway；此处只验 URL var 存在
+  // Gateway directive (Dale 2026-09-22 19:42): all image generation goes through the api-llm gateway; here we only verify the URL var exists
   if (!env.LLM_GATEWAY_URL) return json({ error: 'server misconfigured: missing LLM_GATEWAY_URL' }, 500);
 
-  // SPEC-435 v5: 建 job 立即返回 — 生成在 companion worker DO alarm handler 内执行，
-  // 根治 waitUntil 30s 平台取消（spec §背景 3）。图片载荷走 KV img:<id>（TTL 1h）；
-  // 触发链 stub.fetch → handler 存 meta + setAlarm（立即）。KV/stub 失败 → 500（沿用既有分支语义）。
+  // SPEC-435 v5: create the job and return immediately — generation runs inside the companion worker's DO alarm handler,
+  // eliminating the waitUntil 30s platform cancellation at the root (spec §Background 3). Image payloads go through KV img:<id> (TTL 1h);
+  // trigger chain: stub.fetch → handler stores meta + setAlarm (immediate). KV/stub failure → 500 (existing branch semantics preserved).
   const jobId = newJobId();
   const stored = await jobWrite(env, jobId, { state: 'pending', ip, created: Date.now() });
   if (!stored) return json({ error: 'job store unavailable' }, 500);

@@ -1,5 +1,5 @@
-// i18n.js — zh/en 全量文案字典 + 语言检测/持久化
-// 无 DOM 依赖（document/localStorage/navigator 均带 guard），node 可单测
+// i18n.js — full zh/en copy dictionary + language detection/persistence
+// No DOM dependencies (document/localStorage/navigator are all guarded), unit-testable under node
 
 export const DICT = {
   zh: {

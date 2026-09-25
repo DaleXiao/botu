@@ -1,6 +1,6 @@
-// test/binding.test.mjs — SPEC-440/T-742 service binding 两腿拆单单测
-// 硬约束（lynx ev20535）：API_LLM binding 只准用于 gateway POST 腿；图片下载腿
-// （extractImage 返回的外部绝对 URL，如 OSS）永不走 binding（非 /v1/* path → 404 → 100% 失败）。
+// test/binding.test.mjs — SPEC-440/T-742 service-binding two-leg split unit tests
+// Hard constraint (lynx ev20535): the API_LLM binding may only serve the gateway POST leg; the image-download leg
+// (the external absolute URL returned by extractImage, e.g. OSS) never uses the binding (non-/v1/* path → 404 → 100% failure).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runGeneration, UPSTREAM_PATH, LLM_USECASE } from '../lib/jobcore.js';
@@ -37,7 +37,7 @@ function mockApiLlm() {
   };
 }
 
-test('① __fetch 与 API_LLM 同在：gateway 腿走 __fetch，API_LLM.fetch 计数=0', async () => {
+test('1. both __fetch and API_LLM present: the gateway leg uses __fetch, API_LLM.fetch call count = 0', async () => {
   const apiLlm = mockApiLlm();
   const urls = [];
   const __fetch = async (url) => {
@@ -50,10 +50,10 @@ test('① __fetch 与 API_LLM 同在：gateway 腿走 __fetch，API_LLM.fetch �
   );
   assert.equal(r.ok, true);
   assert.deepEqual(urls, [GW_URL, IMG_URL]);
-  assert.equal(apiLlm.calls.length, 0, '__fetch 优先级最高，binding 零调用');
+  assert.equal(apiLlm.calls.length, 0, '__fetch has top priority; the binding is never called');
 });
 
-test('② 仅 API_LLM：gateway POST 走 binding，图片下载腿只落全局 fetch（binding 总调用=1）', async () => {
+test('2. API_LLM only: the gateway POST goes through the binding, the image-download leg only hits global fetch (total binding calls = 1)', async () => {
   const apiLlm = mockApiLlm();
   const realFetch = globalThis.fetch;
   const globalUrls = [];
@@ -69,23 +69,23 @@ test('② 仅 API_LLM：gateway POST 走 binding，图片下载腿只落全局 f
       { signal },
     );
     assert.equal(r.ok, true);
-    // gateway 腿：binding 恰好 1 次 POST，契约字段齐全
-    assert.equal(apiLlm.calls.length, 1, 'binding 总调用计数=1（下载腿永不走 binding）');
+    // Gateway leg: exactly 1 binding POST with all contract fields present
+    assert.equal(apiLlm.calls.length, 1, 'total binding call count = 1 (the download leg never uses the binding)');
     const call = apiLlm.calls[0];
     assert.equal(call.url, GW_URL, 'url = LLM_GATEWAY_URL + /v1/images/generations');
     assert.equal(call.init.method, 'POST');
-    assert.ok(call.init.headers.Authorization.startsWith('Bearer '), 'Authorization Bearer 前缀');
+    assert.ok(call.init.headers.Authorization.startsWith('Bearer '), 'Authorization Bearer prefix');
     assert.equal(call.init.headers['x-llm-usecase'], LLM_USECASE);
     assert.equal(LLM_USECASE, 'icon-image');
-    assert.equal(call.init.signal, signal, 'signal 透传同一对象');
-    // 图片腿：OSS 绝对 URL 只落全局 fetch
+    assert.equal(call.init.signal, signal, 'the same signal object is passed through');
+    // Image leg: the OSS absolute URL only hits global fetch
     assert.deepEqual(globalUrls, [IMG_URL]);
   } finally {
     globalThis.fetch = realFetch;
   }
 });
 
-test('③ 无 __fetch 无 API_LLM：两腿回落全局 fetch，序列 [gatewayUrl, imgUrl]', async () => {
+test('3. neither __fetch nor API_LLM: both legs fall back to global fetch, sequence [gatewayUrl, imgUrl]', async () => {
   const realFetch = globalThis.fetch;
   const urls = [];
   try {
@@ -101,7 +101,7 @@ test('③ 无 __fetch 无 API_LLM：两腿回落全局 fetch，序列 [gatewayUr
   }
 });
 
-test('④ 成功路径返回 {ok:true, image_base64:非空, mime:image/png}', async () => {
+test('4. the success path returns {ok:true, image_base64 non-empty, mime:image/png}', async () => {
   const apiLlm = mockApiLlm();
   const realFetch = globalThis.fetch;
   try {
@@ -112,7 +112,7 @@ test('④ 成功路径返回 {ok:true, image_base64:非空, mime:image/png}', as
     );
     assert.equal(r.ok, true);
     assert.equal(typeof r.image_base64, 'string');
-    assert.ok(r.image_base64.length > 0, 'image_base64 非空');
+    assert.ok(r.image_base64.length > 0, 'image_base64 non-empty');
     assert.equal(r.image_base64, Buffer.from([1, 2, 3]).toString('base64'));
     assert.equal(r.mime, 'image/png');
   } finally {

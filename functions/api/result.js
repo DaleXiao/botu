@@ -1,9 +1,9 @@
 // functions/api/result.js — SPEC-433/T-733 W2
 // GET /api/result?job=<id> → 200 {state:'pending'} / {state:'done',image_base64,mime,remaining}
-//                          / {state:'error',error} / 404 未知或过期 job / 500 KV 异常 / 405 非 GET
-// 方案 (b)：生成在 generate.js 的 ctx.waitUntil 内完成并把终态写 KV job:<id>；本 handler 纯 KV 读，
-// 永不回源上游、永不扣 quota（恰好一次由 runJob 的 counted 标记保证）。
-// 泄漏纪律：只输出白名单字段；error 文本写入侧已脱敏，读取侧再脱敏一次（双保险）。
+//                          / {state:'error',error} / 404 unknown or expired job / 500 KV fault / 405 non-GET
+// Option (b): generation completes inside generate.js's ctx.waitUntil and writes the terminal state to KV job:<id>; this handler is a pure KV read,
+// it never calls back to the upstream and never charges quota (exactly-once is guaranteed by runJob's counted flag).
+// Leak discipline: only whitelisted fields are emitted; error text is sanitized on the write side and sanitized once more on the read side (double safety).
 
 import { jobKey, sanitizeError } from './generate.js';
 
@@ -23,7 +23,7 @@ export async function onRequest({ request, env }) {
   const id = new URL(request.url).searchParams.get('job') || '';
   if (!JOB_ID_RE.test(id)) return json({ error: 'job not found' }, 404);
 
-  // KV 异常与 job 缺失分开：异常 → 500（前端视为瞬时错误继续轮询）；缺失/损坏 → 404（终态）
+  // KV faults and missing jobs are distinct: a fault → 500 (the frontend treats it as transient and keeps polling); missing/corrupt → 404 (terminal)
   let raw = null;
   if (env && env.BOTU_RL && typeof env.BOTU_RL.get === 'function') {
     try {

@@ -3,8 +3,8 @@ main = "src/index.js"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Gateway 指令（Dale 2026-09-22 19:42）：DO 内出图走 api-llm gateway；
-# LLM_SERVICE_TOKEN = worker secret（wrangler secret put LLM_SERVICE_TOKEN --name botu-job-runner，零回显）
+# Gateway directive (Dale 2026-09-22 19:42): image generation inside the DO goes through the api-llm gateway;
+# LLM_SERVICE_TOKEN = worker secret (wrangler secret put LLM_SERVICE_TOKEN --name botu-job-runner, zero echo)
 [vars]
 LLM_GATEWAY_URL = "https://api-llm.openclawd.co"
 
@@ -20,8 +20,8 @@ class_name = "JobRunner"
 tag = "v1"
 new_sqlite_classes = ["JobRunner"]
 
-# SPEC-440/T-742：service binding 直连 api-llm-worker（同 account 4aa1ef6915a58d0680a9ebcf2047683b），
-# 绕过 CF edge ~100s 墙根治 524；仅用于 gateway POST 腿，图片下载腿仍走全局 fetch
+# SPEC-440/T-742: service binding straight into api-llm-worker (same account, 4aa1ef6915a58d0680a9ebcf2047683b),
+# bypassing the CF edge ~100s wall to eliminate 524s at the root; used only for the gateway POST leg, the image-download leg still uses global fetch
 [[services]]
 binding = "API_LLM"
 service = "api-llm-worker"

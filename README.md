@@ -1,24 +1,24 @@
 # botu
 
-botu.openclawd.co — 把任意角色图变成极简 bot icon。Turn any character image into a minimal bot icon.
+botu.openclawd.co — turn any character image into a minimal bot icon.
 
-- 纯静态前端（零外链）+ Cloudflare Pages Function 代理 DashScope `qwen-image-3.0-pro` 图生图
-- 上传 → canvas 压缩（长边 ≤1536, JPEG q0.85）→ `POST /api/generate` → ~3-4 分钟 → PNG 下载
-- 双语 zh/en（localStorage 持久化）；SEO 全套（og-image 1200×630 / JSON-LD / robots / sitemap）
+- Pure static frontend (zero external links) + a Cloudflare Pages Function proxying DashScope `qwen-image-3.0-pro` image-to-image generation
+- Upload → canvas compression (longest edge ≤1536, JPEG q0.85) → `POST /api/generate` → ~3-4 minutes → PNG download
+- Bilingual zh/en (persisted in localStorage); full SEO suite (og-image 1200×630 / JSON-LD / robots / sitemap)
 
-## 开发
+## Development
 
 ```bash
-node --test        # 全量测试（Node ≥22；勿传目录参数）
-wrangler pages dev # 本地预览（需 DASHSCOPE_API_KEY）
+node --test        # full test suite (Node ≥22; do not pass directory arguments)
+wrangler pages dev # local preview (requires DASHSCOPE_API_KEY)
 ```
 
-## Function 契约
+## Function contract
 
-`POST /api/generate` `{image_base64, mime}` → `{image_base64, mime:"image/png"}`。
-mime 白名单 jpeg/png/webp（400）；base64 ≤14M chars（413）；缺 key 500；上游异常 502。
-OSS 签名 URL 仅在 worker 内消费，不下发前端。
+`POST /api/generate` `{image_base64, mime}` → `{image_base64, mime:"image/png"}`.
+mime allowlist jpeg/png/webp (400); base64 ≤14M chars (413); missing key 500; upstream errors 502.
+OSS signed URLs are consumed inside the worker only and never sent to the frontend.
 
-## 部署
+## Deployment
 
-Cloudflare Pages（git integration, branch `main`）。部署前置：Pages secret `DASHSCOPE_API_KEY`。
+Cloudflare Pages (git integration, branch `main`). Deployment prerequisite: Pages secret `DASHSCOPE_API_KEY`.

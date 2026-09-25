@@ -1,7 +1,7 @@
-// SPEC-444 / T-745: botu UI 三件套静态断言
-// F1 work 区横排（.pair nowrap + slot 收缩 + img min(240px,38vw)）
-// F2 done 态零占位符（resultPh 物理 remove/重建 + #resultBox:has(img) .ph CSS 兜底）
-// F3 gallerySub 三处零残留 / F4 资产版本 v=445
+// SPEC-444 / T-745: botu UI trio static assertions
+// F1 horizontal work area (.pair nowrap + shrinkable slots + img min(240px,38vw))
+// F2 zero placeholders in the done state (resultPh physically removed/rebuilt + the #resultBox:has(img) .ph CSS fallback)
+// F3 zero gallerySub residue in three places / F4 asset version v=445
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,62 +17,62 @@ const appJs = read('js/app.js');
 const i18nJs = read('js/i18n.js');
 const i18nTest = read('test/i18n.test.js');
 
-// ── F1 work 区横排 ──────────────────────────────
-test('F1: work 顶层 .pair 规则 flex-wrap:nowrap（与 .gcard .pair.sm / .btnrow 区分）', () => {
+// ── F1 horizontal work area ──────────────────────────────
+test('F1: the top-level work .pair rule is flex-wrap:nowrap (distinct from .gcard .pair.sm / .btnrow)', () => {
   const m = css.match(/(?:^|\n)\.pair\s*\{([^}]*)\}/);
-  assert.ok(m, '顶层 .pair 规则在场');
-  assert.match(m[1], /flex-wrap:\s*nowrap/, '.pair 含 nowrap');
-  assert.ok(!m[1].includes('flex-wrap: wrap'), '.pair 不含 wrap');
+  assert.ok(m, 'the top-level .pair rule is present');
+  assert.match(m[1], /flex-wrap:\s*nowrap/, '.pair contains nowrap');
+  assert.ok(!m[1].includes('flex-wrap: wrap'), '.pair does not contain wrap');
 });
 
-test('F1: .slot 可收缩 + .slotbox min-width:0 + img max-width:min(240px,38vw)（旧 240px/40vw 策略零残留）', () => {
+test('F1: .slot shrinkable + .slotbox min-width:0 + img max-width:min(240px,38vw) (zero residue of the old 240px/40vw strategy)', () => {
   const slot = css.match(/(?:^|\n)\.slot\s*\{([^}]*)\}/);
-  assert.ok(slot, '.slot 规则在场');
-  assert.match(slot[1], /flex:\s*0 1 auto/, '.slot flex 收缩');
+  assert.ok(slot, 'the .slot rule is present');
+  assert.match(slot[1], /flex:\s*0 1 auto/, '.slot flex shrink');
   assert.match(slot[1], /min-width:\s*0/, '.slot min-width:0');
-  assert.ok(!css.includes('min-width: 240px'), 'slotbox 旧 min-width:240px 零残留');
-  assert.match(css, /\.slotbox img\s*\{[^}]*max-width:\s*min\(240px,\s*38vw\)/, 'img 收缩上限');
-  assert.ok(!css.includes('40vw'), '@560 旧 40vw 双策略零残留（单一 min(240px,38vw)）');
+  assert.ok(!css.includes('min-width: 240px'), 'zero residue of the old slotbox min-width:240px');
+  assert.match(css, /\.slotbox img\s*\{[^}]*max-width:\s*min\(240px,\s*38vw\)/, 'the img shrink cap');
+  assert.ok(!css.includes('40vw'), 'zero residue of the old @560 40vw dual strategy (single min(240px,38vw))');
 });
 
-// ── F2 done 态零占位符 ──────────────────────────
-test('F2: CSS 兜底 #resultBox:has(img) .ph display:none!important 在场', () => {
-  assert.match(css, /#resultBox:has\(img\)\s+\.ph\s*\{[^}]*display:\s*none\s*!important/, ':has(img) 兜底规则');
+// ── F2 zero placeholders in the done state ──────────────────────────
+test('F2: the CSS fallback #resultBox:has(img) .ph display:none!important is present', () => {
+  assert.match(css, /#resultBox:has\(img\)\s+\.ph\s*\{[^}]*display:\s*none\s*!important/, 'the :has(img) fallback rule');
 });
 
-test('F2: app.js 物理 remove + 模板常量重建（旧 hidden=true 无效路径零残留）', () => {
-  assert.ok(appJs.includes('const RESULT_PH_SVG ='), 'RESULT_PH_SVG 模板常量在场');
-  assert.match(appJs, /if \(ph\) ph\.remove\(\);/, 'showResult 物理移除占位');
-  assert.ok(appJs.includes("insertAdjacentHTML('afterbegin', RESULT_PH_SVG)"), 'clearResult 不存在则重建并 prepend');
-  assert.ok(!/^\s*\$\('resultPh'\)\.hidden = true/m.test(appJs), '旧 hidden=true 代码行零残留（注释提及根因不算）');
+test('F2: app.js uses physical remove + template-constant rebuild (zero residue of the ineffective hidden=true path)', () => {
+  assert.ok(appJs.includes('const RESULT_PH_SVG ='), 'the RESULT_PH_SVG template constant is present');
+  assert.match(appJs, /if \(ph\) ph\.remove\(\);/, 'showResult physically removes the placeholder');
+  assert.ok(appJs.includes("insertAdjacentHTML('afterbegin', RESULT_PH_SVG)"), 'clearResult rebuilds and prepends when missing');
+  assert.ok(!/^\s*\$\('resultPh'\)\.hidden = true/m.test(appJs), 'zero residue of the old hidden=true code line (root-cause mentions in comments do not count)');
 });
 
-test('F2: app.js RESULT_PH_SVG 与 index.html 内联 SVG markup 逐字一致（gallery-v4 W3\u0027 pin 不回归）', () => {
+test('F2: app.js RESULT_PH_SVG is byte-identical to the inline SVG markup in index.html (the gallery-v4 W3\u0027 pin does not regress)', () => {
   const m = html.match(/id="resultBox">(<svg[\s\S]*?<\/svg>)/);
-  assert.ok(m, 'index.html resultBox 首子节点为内联 SVG');
-  assert.ok(appJs.includes(m[1]), 'RESULT_PH_SVG 与 index.html SVG 逐字一致');
+  assert.ok(m, 'index.html resultBox first child is the inline SVG');
+  assert.ok(appJs.includes(m[1]), 'RESULT_PH_SVG matches the index.html SVG byte for byte');
 });
 
-// ── F3 gallerySub 零残留 ────────────────────────
-test('F3: gallerySub 在 index.html / js/i18n.js / test/i18n.test.js 三处零残留', () => {
+// ── F3 zero gallerySub residue ────────────────────────
+test('F3: zero gallerySub residue in index.html / js/i18n.js / test/i18n.test.js', () => {
   for (const [name, src] of [['index.html', html], ['js/i18n.js', i18nJs], ['test/i18n.test.js', i18nTest]]) {
-    assert.ok(!src.includes('gallerySub'), `${name} 仍含 gallerySub`);
+    assert.ok(!src.includes('gallerySub'), `${name} still contains gallerySub`);
   }
 });
 
-// ── F4 资产版本 bump ────────────────────────────
-test('F4: index.html css/js ?v=445 两处 bump、v=444 零残留（favicon ?v=433 / gallery ?v=437 不动）', () => {
+// ── F4 asset version bump ────────────────────────────
+test('F4: index.html css/js both bumped to ?v=445, zero v=444 residue (favicon ?v=433 / gallery ?v=437 unchanged)', () => {
   assert.match(html, /css\/style\.css\?v=445/, 'style.css?v=445');
   assert.match(html, /js\/app\.js\?v=445/, 'app.js?v=445');
-  assert.ok(!html.includes('v=444'), 'index.html v=444 零残留');
-  assert.match(html, /favicon\.png\?v=433/, 'favicon 版本不动');
+  assert.ok(!html.includes('v=444'), 'index.html has zero v=444 residue');
+  assert.match(html, /favicon\.png\?v=433/, 'the favicon version is unchanged');
   const galleryRefs = [...html.matchAll(/src="gallery\/[^"]+"/g)].map((x) => x[0]);
-  assert.equal(galleryRefs.length, 8, 'gallery 8 张引用不动');
+  assert.equal(galleryRefs.length, 8, 'the 8 gallery refs are unchanged');
   for (const r of galleryRefs) assert.match(r, /\.webp\?v=437"/, r);
 });
 
-// ── 不回归 ──────────────────────────────────────
-test('不回归: SPEC-442 [hidden]{display:none!important} 与 gallery .pair.sm 横排先例在场', () => {
-  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/, '[hidden] 语义恢复规则保留');
-  assert.match(css, /\.gcard \.pair\.sm\s*\{[^}]*flex-wrap:\s*nowrap/, 'gallery 横排先例保留');
+// ── no regressions ──────────────────────────────────────
+test('no regression: SPEC-442 [hidden]{display:none!important} and the gallery .pair.sm horizontal precedent are present', () => {
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/, 'the [hidden] semantics-restore rule is preserved');
+  assert.match(css, /\.gcard \.pair\.sm\s*\{[^}]*flex-wrap:\s*nowrap/, 'the gallery horizontal precedent is preserved');
 });

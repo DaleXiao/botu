@@ -1,5 +1,5 @@
-// upload.js — 文件压缩：canvas 长边 ≤1536、JPEG q0.85 → base64
-// 浏览器专用（document/canvas）；纯逻辑 maxSide/quality 参数化便于测试
+// upload.js — image compression: canvas longest side ≤1536, JPEG q0.85 → base64
+// Browser-only (document/canvas); the pure logic is parameterized (maxSide/quality) for testability
 
 export const MAX_SIDE = 1536;
 export const JPEG_QUALITY = 0.85;

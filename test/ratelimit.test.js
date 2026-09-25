@@ -1,4 +1,4 @@
-// test/ratelimit.test.js — SPEC-431 W6/W7 每 IP 日限 5 次：纯函数 + handler 集成（mock BOTU_RL）+ /api/quota 契约
+// test/ratelimit.test.js — SPEC-431 W6/W7 daily limit of 5 per IP: pure functions + handler integration (mocked BOTU_RL) + the /api/quota contract
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -18,7 +18,7 @@ const okUpstream = {
   output: { choices: [{ message: { content: [{ text: 'done' }, { image: 'https://oss.example/gen.png?sig=***' }] } }] },
 };
 const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 7]);
-// Gateway 收敛（Dale 2026-09-22 19:42）：mock api-llm gateway 源
+// Gateway consolidation (Dale 2026-09-22 19:42): mocked api-llm gateway origin
 const GW = 'https://gw.test';
 const GW_URL = GW + UPSTREAM_PATH;
 
@@ -51,7 +51,7 @@ const post = (env, ip = IP) =>
     env,
   });
 
-// SPEC-435 v5：DO 触发链 mock（stub.fetch 直连真实 JobRunner；alarm 手动驱动）
+// SPEC-435 v5: DO trigger-chain mock (stub.fetch talks directly to a real JobRunner; alarm driven manually)
 function mockDO(env) {
   const instances = new Map();
   const binding = {
@@ -79,7 +79,7 @@ function mockDO(env) {
   return { binding, alarm: (name) => instances.get(name).alarm() };
 }
 
-// POST + alarm 全链（v5：扣费/终态在 alarm 内完成）
+// Full POST + alarm chain (v5: charging/the terminal state complete inside the alarm)
 async function postAndRun(env, ip = IP) {
   const doMock = mockDO(env);
   env.JOB_RUNNER = doMock.binding;
@@ -100,25 +100,25 @@ const quotaGet = (env, method = 'GET', ip = IP) =>
     env,
   });
 
-// ── 纯函数 ──────────────────────────────────────
+// ── pure functions ──────────────────────────────────────
 test('utcDay: UTC yyyymmdd', () => {
   assert.equal(utcDay(new Date(Date.UTC(2026, 8, 22, 23, 59))), '20260922');
   assert.equal(utcDay(new Date(Date.UTC(2026, 0, 5))), '20260105');
   assert.match(today, /^\d{8}$/);
 });
 
-test('rlKey: rl:<ip>:<day> 格式 + 常量', () => {
+test('rlKey: rl:<ip>:<day> format + constants', () => {
   assert.equal(rlKey('9.9.9.9', '20260922'), 'rl:9.9.9.9:20260922');
   assert.equal(DAILY_LIMIT, 5);
   assert.equal(RL_TTL, 172800);
 });
 
-test('clientIp: CF-Connecting-IP，缺失回退 unknown', () => {
+test('clientIp: CF-Connecting-IP, falls back to unknown when missing', () => {
   assert.equal(clientIp(new Request('https://x/', { headers: { 'CF-Connecting-IP': '5.6.7.8' } })), '5.6.7.8');
   assert.equal(clientIp(new Request('https://x/')), 'unknown');
 });
 
-test('rlReadCount: binding 缺失/get 抛异常/脏值 → fail-open 0', async () => {
+test('rlReadCount: missing binding / get throws / dirty value → fail-open 0', async () => {
   assert.equal(await rlReadCount({}, IP), 0);
   assert.equal(await rlReadCount({ BOTU_RL: {} }, IP), 0);
   assert.equal(await rlReadCount({ BOTU_RL: { get: async () => { throw new Error('kv down'); } } }, IP), 0);
@@ -128,7 +128,7 @@ test('rlReadCount: binding 缺失/get 抛异常/脏值 → fail-open 0', async (
   assert.equal(await rlReadCount({ BOTU_RL: { get: async () => '4' } }, IP), 4);
 });
 
-test('rlWrite: put(key, String(n), ttl 48h)；put 抛异常不冒泡', async () => {
+test('rlWrite: put(key, String(n), ttl 48h); a throwing put never bubbles up', async () => {
   const kv = mockKV();
   await rlWrite({ BOTU_RL: kv.binding }, IP, 3);
   assert.deepEqual(kv.puts, [{ k: KEY, v: '3', opts: { expirationTtl: 172800 } }]);
@@ -136,15 +136,15 @@ test('rlWrite: put(key, String(n), ttl 48h)；put 抛异常不冒泡', async () 
   await rlWrite({}, IP, 1); // no binding: silent
 });
 
-test('remainingOf: 5-count 下限 0', () => {
+test('remainingOf: 5-count floored at 0', () => {
   assert.equal(remainingOf(0), 5);
   assert.equal(remainingOf(3), 2);
   assert.equal(remainingOf(5), 0);
   assert.equal(remainingOf(7), 0);
 });
 
-// ── generate.js 集成 ────────────────────────────
-test('onRequestPost: 计数已达 5 → 429 JSON 且不打上游', async () => {
+// ── generate.js integration ────────────────────────────
+test('onRequestPost: count already at 5 → 429 JSON without calling the upstream', async () => {
   const kv = mockKV({ [KEY]: '5' });
   let fetched = 0;
   const res = await post({
@@ -159,7 +159,7 @@ test('onRequestPost: 计数已达 5 → 429 JSON 且不打上游', async () => {
   assert.equal(kv.puts.length, 0);
 });
 
-test('onRequestPost: job 成功后计数 +1（含 TTL），key 用 CF-Connecting-IP', async () => {
+test('onRequestPost: count +1 after a successful job (with TTL), keyed by CF-Connecting-IP', async () => {
   const kv = mockKV({ [KEY]: '2' });
   const res = await postAndRun({ LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() });
   assert.equal(res.status, 200);
@@ -167,20 +167,20 @@ test('onRequestPost: job 成功后计数 +1（含 TTL），key 用 CF-Connecting
   assert.deepEqual(rlPuts, [{ k: KEY, v: '3', opts: { expirationTtl: 172800 } }]);
 });
 
-test('onRequestPost: 上游失败 → alarm 写 job error，不计数', async () => {
+test('onRequestPost: upstream failure → the alarm writes a job error, count untouched', async () => {
   const kv = mockKV({ [KEY]: '1' });
   const res = await postAndRun({
     LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding,
     __fetch: async () => new Response('boom', { status: 500 }),
   });
-  assert.equal(res.status, 200); // job 已受理
+  assert.equal(res.status, 200); // the job was accepted
   const j = await res.json();
   const job = JSON.parse(await kv.binding.get('job:' + j.job_id));
   assert.equal(job.state, 'error');
   assert.equal(kv.puts.filter((x) => x.k === KEY).length, 0);
 });
 
-test('onRequestPost: KV 全挂 → quota fail-open 但 job 无法落盘 → 500，不打上游', async () => {
+test('onRequestPost: KV fully down → quota fails open but the job cannot be stored → 500, no upstream call', async () => {
   const bad = {
     get: async () => { throw new Error('kv read down'); },
     put: async () => { throw new Error('kv write down'); },
@@ -195,27 +195,27 @@ test('onRequestPost: KV 全挂 → quota fail-open 但 job 无法落盘 → 500�
   assert.equal(fetched, 0);
 });
 
-test('onRequestPost: 无 CF-Connecting-IP → key 用 unknown', async () => {
+test('onRequestPost: no CF-Connecting-IP → key uses unknown', async () => {
   const kv = mockKV();
   const res = await postAndRun({ LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding, __fetch: mockFetch() }, null);
   assert.equal(res.status, 200);
   assert.ok(kv.puts.some((x) => x.k === rlKey('unknown', today)));
 });
 
-// ── quota.js 契约 ───────────────────────────────
-test('quota GET: 无 binding → 200 {"remaining":5}（fail-open）', async () => {
+// ── quota.js contract ───────────────────────────────
+test('quota GET: no binding → 200 {"remaining":5} (fail-open)', async () => {
   const res = await quotaGet({});
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /application\/json/);
   assert.deepEqual(await res.json(), { remaining: 5 });
 });
 
-test('quota GET: 已用 2 → remaining 3；已用 5+ → 0', async () => {
+test('quota GET: 2 used → remaining 3; 5+ used → 0', async () => {
   assert.deepEqual(await (await quotaGet({ BOTU_RL: mockKV({ [KEY]: '2' }).binding })).json(), { remaining: 3 });
   assert.deepEqual(await (await quotaGet({ BOTU_RL: mockKV({ [KEY]: '9' }).binding })).json(), { remaining: 0 });
 });
 
-test('quota 非 GET → 405 JSON', async () => {
+test('quota non-GET → 405 JSON', async () => {
   const res = await quotaGet({}, 'POST');
   assert.equal(res.status, 405);
   assert.match(res.headers.get('content-type'), /application\/json/);

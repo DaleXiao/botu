@@ -1,6 +1,6 @@
-// app.js — T-730 站点接线：上传 → 压缩 → 预览 → 生成 → 结果/下载
-// SPEC-433 W3: 生成改异步 job 流 — POST 拿 job_id 后每 3s 轮询 /api/result，上限 6min
-// loading 态：转圈 + 已等待秒数 + 轮换文案；结果框用内联 SVG 占位，done 才渲染 <img>（W3'，任何状态无空 src）
+// app.js — T-730 site wiring: upload → compress → preview → generate → result/download
+// SPEC-433 W3: generation moved to an async job flow — POST returns a job_id, then /api/result is polled every 3s, capped at 6min
+// Loading state: spinner + seconds waited + rotating hints; the result box uses an inline SVG placeholder and renders the <img> only when done (W3', no empty src in any state)
 import { DICT, detectLang, applyLang } from './i18n.js?v=438';
 import { compressImage, ACCEPT_MIME } from './upload.js?v=433';
 
@@ -15,7 +15,7 @@ const state = {
   height: 0,
   kb: 0,
   previewUrl: null,
-  resultUrl: null, // SPEC-441: 当前结果 blob URL（重建/换一张/再生成前 revoke，防泄漏）
+  resultUrl: null, // SPEC-441: current result blob URL (revoked before rebuild / new image / regenerate, to prevent leaks)
   busy: false,
   remaining: null,
   hintTimer: null,
@@ -146,7 +146,7 @@ function stopTimers() {
   $('loadingBox').hidden = true;
 }
 
-// SPEC-433 W3': 图均动态渲染 — 初始 DOM 不放空 src <img>；占位用内联 SVG bot 脸（随主题 currentColor）
+// SPEC-433 W3': both images render dynamically — no empty-src <img> in the initial DOM; the placeholder is an inline SVG bot face (currentColor follows the theme)
 function renderBefore(url) {
   const box = $('beforeBox');
   box.textContent = '';
@@ -156,13 +156,13 @@ function renderBefore(url) {
   box.appendChild(img);
 }
 
-// SPEC-444 F2: resultPh 占位 SVG 模板常量（与 index.html 内联 markup 逐字一致，test/ui-trio.test.mjs pin 住）
-// 根因：SVGElement 无 hidden IDL 属性 —— $('resultPh').hidden = true 只产生 expando 属性、不反射 attribute，
-// SPEC-442 的 [hidden]{display:none!important} 永不命中 → done 态占位符击穿。改物理 remove/重建，CSS :has(img) 兜底双保险。
+// SPEC-444 F2: resultPh placeholder SVG template constant (byte-identical to the inline markup in index.html; pinned by test/ui-trio.test.mjs)
+// Root cause: SVGElement has no hidden IDL property — assigning $('resultPh').hidden = true only creates an expando property and never reflects to the attribute,
+// so SPEC-442's [hidden]{display:none!important} never matches → the placeholder leaked through in the done state. Fix: physical remove/rebuild, with the CSS :has(img) fallback as a second layer.
 const RESULT_PH_SVG = '<svg class="ph" id="resultPh" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.2"/><rect x="8" y="9" width="2.5" height="5.5" rx="1.25" fill="currentColor"/><rect x="13.5" y="9" width="2.5" height="5.5" rx="1.25" fill="currentColor"/></svg>';
 
 function clearResult() {
-  // SPEC-441: 统一在此 revoke 上一个结果 blob URL — resetBtn/再生成(generate→clearResult)/重建(showResult→clearResult) 三路共用
+  // SPEC-441: single place that revokes the previous result blob URL — shared by all three paths: resetBtn / regenerate (generate→clearResult) / rebuild (showResult→clearResult)
   if (state.resultUrl) {
     URL.revokeObjectURL(state.resultUrl);
     state.resultUrl = null;
@@ -170,7 +170,7 @@ function clearResult() {
   const box = $('resultBox');
   const old = box.querySelector('img');
   if (old) old.remove();
-  // SPEC-444 F2: 占位不存在则用常量重建并 prepend（与 index.html 初始态一致：resultBox 首子节点为 SVG）
+  // SPEC-444 F2: if the placeholder is missing, rebuild it from the constant and prepend (matches the initial state in index.html: resultBox's first child is the SVG)
   if (!$('resultPh')) box.insertAdjacentHTML('afterbegin', RESULT_PH_SVG);
   $('resultPh').hidden = false;
 }
@@ -182,12 +182,12 @@ function showResult(url) {
   img.alt = 'after';
   img.src = url;
   $('resultBox').appendChild(img);
-  // SPEC-444 F2: done 态零占位符 — 物理移除（hidden 赋值对 SVGElement 无效，见 RESULT_PH_SVG 注释）
+  // SPEC-444 F2: zero placeholders in the done state — physically remove it (assigning hidden has no effect on SVGElement; see the RESULT_PH_SVG comment)
   const ph = $('resultPh');
   if (ph) ph.remove();
 }
 
-// SPEC-433 W3: 3s 轮询 /api/result，预算 6min；网络抖动/5xx 视为瞬时继续轮，404/error/超时给可重试提示
+// SPEC-433 W3: poll /api/result every 3s with a 6min budget; network hiccups/5xx count as transient and polling continues; 404/error/timeout surface a retryable message
 const POLL_MS = 3000;
 const POLL_BUDGET_MS = 6 * 60 * 1000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -204,13 +204,13 @@ async function pollResult(jobId) {
         data = await res.json();
       } catch {}
     } catch {
-      continue; // 瞬时网络抖动：不中断轮询
+      continue; // transient network hiccup: do not interrupt polling
     }
     if (res.status === 404) {
       showError(t('errJobGone'));
       return;
     }
-    if (!res.ok) continue; // 5xx（含 KV 异常）：瞬时，继续轮
+    if (!res.ok) continue; // 5xx (including KV faults): transient, keep polling
     if (data && data.state === 'done' && typeof data.image_base64 === 'string') {
       renderDone(data);
       return;
@@ -219,16 +219,16 @@ async function pollResult(jobId) {
       showError(t('errJobFailed'));
       return;
     }
-    // pending → 继续；进度态（spinner/秒数/轮换文案）由 loadingBox 承担
+    // pending → keep going; the progress UI (spinner / seconds / rotating hints) is owned by loadingBox
   }
   showError(t('errTimeout'));
 }
 
-// SPEC-441 / T-741: base64 → blob URL — a[download] 对 data: URL 的下载在 Safari/部分浏览器不生效，统一改 blob
-// b64ToBytes 为纯函数（不触 DOM/URL），具名导出供 node:test 直测（test/download.test.mjs）
+// SPEC-441 / T-741: base64 → blob URL — a[download] on data: URLs does not work in Safari/some browsers, so everything uses blobs
+// b64ToBytes is a pure function (touches no DOM/URL), exported by name for direct node:test coverage (test/download.test.mjs)
 export function b64ToBytes(b64) {
   if (typeof b64 !== 'string') throw new TypeError('b64ToBytes: expected base64 string');
-  const bin = atob(b64); // 非法 base64 → DOMException(InvalidCharacterError)
+  const bin = atob(b64); // invalid base64 → DOMException(InvalidCharacterError)
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
@@ -242,13 +242,13 @@ function b64ToBlobUrl(b64, mime) {
 function renderDone(data) {
   const url = b64ToBlobUrl(data.image_base64, data.mime || 'image/png');
   showResult(url);
-  state.resultUrl = url; // showResult→clearResult 已 revoke 旧值，此处登记新 objectURL
+  state.resultUrl = url; // showResult→clearResult already revoked the old value; register the new objectURL here
   const dl = $('dlBtn');
   dl.href = url;
   dl.hidden = false;
   $('regenBtn').hidden = false;
   if (typeof data.remaining === 'number') {
-    state.remaining = Math.max(0, data.remaining); // 服务端权威余额
+    state.remaining = Math.max(0, data.remaining); // server-authoritative remaining count
   } else if (state.remaining !== null) {
     state.remaining = Math.max(0, state.remaining - 1);
   }
@@ -312,7 +312,7 @@ function renderDynamic() {
   renderQuota();
 }
 
-// --- quota (SPEC-431 W6): 每 IP 日限 5 次 — GET api/quota 显剩余；0 → 禁用生成 + 引导文案；429 → 状态行报错
+// --- quota (SPEC-431 W6): 5 per IP per day — GET api/quota shows the remainder; 0 → generation disabled + guidance copy; 429 → error in the status line
 const QUOTA_MAX = 5;
 
 function renderQuota() {
@@ -343,7 +343,7 @@ async function fetchQuota() {
       if (state.remaining === 0) $('genBtn').disabled = true;
     }
   } catch {
-    // fail-open：quota 行保持隐藏，不阻断生成
+    // fail-open: keep the quota line hidden, never block generation
   }
 }
 
@@ -406,7 +406,7 @@ function wire() {
   $('themeBtn').addEventListener('click', () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
 }
 
-// SPEC-441: Node(node:test) 导入本模块只取纯函数（b64ToBytes），不执行浏览器接线
+// SPEC-441: when Node (node:test) imports this module it only uses the pure function (b64ToBytes); the browser wiring does not run
 if (typeof document !== 'undefined') {
   setLang(detectLang());
   wire();

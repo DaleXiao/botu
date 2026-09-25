@@ -1,6 +1,6 @@
 // functions/api/quota.js — SPEC-431 W6
-// GET /api/quota → {"remaining":N}（与 generate 同一 key 规则 rl:<ip>:<UTC yyyymmdd>）
-// 其他方法 → 405 JSON。KV binding 缺失或读取异常 fail-open → remaining=DAILY_LIMIT。
+// GET /api/quota → {"remaining":N} (same key rule as generate: rl:<ip>:<UTC yyyymmdd>)
+// Other methods → 405 JSON. A missing KV binding or read faults fail open → remaining=DAILY_LIMIT.
 
 import { clientIp, rlReadCount, DAILY_LIMIT } from './generate.js';
 
