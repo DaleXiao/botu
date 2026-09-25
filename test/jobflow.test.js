@@ -1,7 +1,7 @@
-// test/jobflow.test.js — SPEC-433/T-733 W5 · SPEC-435/T-736 v5：异步 job 流单测（KV stub 内存 Map）
-// 覆盖：POST 分支语义 / job_id 形状 / DO 触发链（stub.fetch→setAlarm→alarm）/ result 四分支 /
-// quota 恰好一次幂等 / error 不扣 / alarm 幂等 guard / attempts 上限 / 5min 硬超时 / img TTL /
-// 泄漏断言（响应体 + job 值 + result.js & worker 源码 无上游 token）
+// test/jobflow.test.js — SPEC-433/T-733 W5 · SPEC-435/T-736 v5: async job-flow unit tests (in-memory Map KV stub)
+// Covers: POST branch semantics / job_id shape / DO trigger chain (stub.fetch→setAlarm→alarm) / the four result branches /
+// exactly-once quota idempotency / errors not charged / alarm idempotency guard / attempts cap / 5min hard timeout / img TTL /
+// leak assertions (response bodies + job values + result.js & worker sources carry no upstream tokens)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ import { JobRunner } from '../worker/src/index.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const B64 = 'aGVsbG8=';
 const TEST_KEY = ['te'+'st', '_ke'+'y'].join('');
-// Gateway 收敛（Dale 2026-09-22 19:42）：mock api-llm gateway 源
+// Gateway consolidation (Dale 2026-09-22 19:42): mocked api-llm gateway origin
 const GW = 'https://gw.test';
 const GW_URL = GW + UPSTREAM_PATH;
 const IP = '1.2.3.4';
@@ -29,14 +29,14 @@ const okUpstream = {
   output: { choices: [{ message: { content: [{ text: 'done' }, { image: 'https://oss.example/gen.png?sig=1' }] } }] },
 };
 
-// 泄漏断言用禁词（碎片拼接构造，避免测试文件自身出现连续 token 形态）
+// Forbidden tokens for leak assertions (built from concatenated fragments so this test file never contains the full token shapes)
 const FORBIDDEN = [
   new RegExp(['dash', 'scope'].join(''), 'i'),
   /sk-/i,
   new RegExp(['Sign', 'ature='].join(''), 'i'),
   new RegExp(['x-', 'oss-'].join(''), 'i'),
 ];
-// 脏上游错误体：故意携带全部禁词 + 签名 URL，验证脱敏
+// Dirty upstream error body: deliberately carries every forbidden token + a signed URL, to verify sanitization
 const DIRTY_BODY = 'rate limited ' + ['sk', 'LEAK123'].join('-')
   + ' ' + ['Sign', 'ature=SEC'].join('')
   + ' ' + ['x-', 'oss-', 'cred'].join('')
@@ -69,7 +69,7 @@ const dirtyFetch = async (url) => (url === GW_URL
   ? new Response(DIRTY_BODY, { status: 500 })
   : new Response(pngBytes, { status: 200 }));
 
-// SPEC-433 hotfix：慢上游 stub — 模拟生产 DashScope 2-4min 出图（ms 级缩放），断言响应先行
+// SPEC-433 hotfix: slow-upstream stub — simulates production DashScope 2-4min generation (scaled down to ms), asserting the response comes first
 const slowFetch = (ms) => async (url) => { await new Promise((r)=>setTimeout(r,ms)); return okFetch(url); };
 
 const post = (env, { ip = IP, ctx = undefined, waitUntil = undefined, body = JSON.stringify({ image_base64: B64, mime: 'image/png' }) } = {}) =>
@@ -90,9 +90,9 @@ const getResult = (env, query, method = 'GET') =>
     env,
   });
 
-// SPEC-435 v5：DO 触发链 mock — stub.fetch 直连真实 JobRunner 实例（storage 内存 stub）。
-// 生产链路：Pages POST → JOB_RUNNER stub.fetch → fetch handler 存 meta+setAlarm → 平台回调 alarm()。
-// 单测里 alarm 由 doMock.alarm(name) 手动驱动，其余全部真实代码。
+// SPEC-435 v5: DO trigger-chain mock — stub.fetch talks directly to a real JobRunner instance (in-memory storage stub).
+// Production chain: Pages POST → JOB_RUNNER stub.fetch → fetch handler stores meta+setAlarm → the platform invokes alarm().
+// In unit tests the alarm is driven manually via doMock.alarm(name); everything else is real code.
 function mockDO(env) {
   const instances = new Map();
   const names = [];
@@ -133,7 +133,7 @@ function mockDO(env) {
   };
 }
 
-// 标准 env 装配：KV mock + DO mock + fetch mock（POST 集成测试统一入口）
+// Standard env assembly: KV mock + DO mock + fetch mock (single entry point for the POST integration tests)
 function envWith({ fetchMock = okFetch, kvInitial } = {}) {
   const kv = mockKV(kvInitial);
   const env = { LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding, __fetch: fetchMock };
@@ -144,12 +144,12 @@ function envWith({ fetchMock = okFetch, kvInitial } = {}) {
 
 function scanNoLeak(text, label) {
   for (const re of FORBIDDEN) {
-    assert.ok(!re.test(String(text)), `${label} 泄漏禁词 ${re}`);
+    assert.ok(!re.test(String(text)), `${label} leaks forbidden token ${re}`);
   }
 }
 
-// ── 常量 / id / 脱敏 ────────────────────────────
-test('job 常量与 id：JOB_TTL=3600，jobKey 前缀，newJobId 32-hex 唯一', () => {
+// ── constants / ids / sanitization ────────────────────────
+test('job constants and ids: JOB_TTL=3600, jobKey prefix, newJobId 32-hex uniqueness', () => {
   assert.equal(JOB_TTL, 3600);
   assert.equal(jobKey('abc'), 'job:abc');
   const a = newJobId();
@@ -158,38 +158,38 @@ test('job 常量与 id：JOB_TTL=3600，jobKey 前缀，newJobId 32-hex 唯一',
   assert.notEqual(a, b);
 });
 
-test('sanitizeError：剥 URL/凭证样 token/上游域名，截断 200', () => {
+test('sanitizeError: strips URLs / credential-like tokens / the upstream domain, truncates to 200', () => {
   const out = sanitizeError(DIRTY_BODY + 'x'.repeat(300));
-  scanNoLeak(out, 'sanitizeError 输出');
+  scanNoLeak(out, 'sanitizeError output');
   assert.ok(out.length <= 200);
   assert.equal(sanitizeError(null), '');
   assert.equal(sanitizeError(undefined), '');
 });
 
-// ── POST：job 创建 + waitUntil 时序 ─────────────
-test('POST happy：stub.fetch 触发链，响应先行 200 {job_id}；job 先 pending，alarm 后 done', async () => {
+// ── POST: job creation + waitUntil timing ─────────────
+test('POST happy path: stub.fetch trigger chain, response first with 200 {job_id}; job starts pending, done after the alarm', async () => {
   const { kv, env, doMock } = envWith();
   const res = await post(env);
   assert.equal(res.status, 200);
   const j = await res.json();
   assert.deepEqual(Object.keys(j), ['job_id']);
   assert.match(j.job_id, /^[0-9a-f]{32}$/);
-  // 触发链断言：idFromName(job-<id>) 一 job 一实例 + stub.fetch 恰一次 + headers 带 jobId/ip
-  assert.deepEqual(doMock.names, [`job-${j.job_id}`], '一 job 一实例名');
-  assert.equal(doMock.dispatches.length, 1, 'stub.fetch 恰好一次');
+  // Trigger-chain assertions: idFromName(job-<id>) one instance per job + stub.fetch exactly once + headers carry jobId/ip
+  assert.deepEqual(doMock.names, [`job-${j.job_id}`], 'one instance name per job');
+  assert.equal(doMock.dispatches.length, 1, 'stub.fetch exactly once');
   assert.equal(doMock.dispatches[0].opts.headers['x-botu-job'], j.job_id);
   assert.equal(doMock.dispatches[0].opts.headers['x-botu-ip'], IP);
   const inst = doMock.inst(`job-${j.job_id}`);
-  assert.ok(inst.st.alarmAt !== null && inst.st.alarmAt <= Date.now(), 'setAlarm 立即');
-  // alarm 回调前：KV 为 pending，result 回 pending；img 载荷已落 KV
+  assert.ok(inst.st.alarmAt !== null && inst.st.alarmAt <= Date.now(), 'setAlarm immediate');
+  // Before the alarm callback: KV holds pending and result returns pending; the img payload is already in KV
   const pend = await jobRead({ BOTU_RL: kv.binding }, j.job_id);
   assert.equal(pend.state, 'pending');
   assert.equal(pend.ip, IP);
   assert.equal(kv.store.get(jobKey(j.job_id)).includes('"state":"pending"'), true);
-  assert.equal(typeof kv.store.get(imgKey(j.job_id)), 'string', 'img:<id> 已写入');
+  assert.equal(typeof kv.store.get(imgKey(j.job_id)), 'string', 'img:<id> written');
   const pr = await getResult({ BOTU_RL: kv.binding }, '?job=' + j.job_id);
   assert.deepEqual(await pr.json(), { state: 'pending' });
-  // alarm 回调（真实 JobRunner.alarm）→ done
+  // Alarm callback (real JobRunner.alarm) → done
   await doMock.alarm(`job-${j.job_id}`);
   const done = await jobRead({ BOTU_RL: kv.binding }, j.job_id);
   assert.equal(done.state, 'done');
@@ -197,18 +197,18 @@ test('POST happy：stub.fetch 触发链，响应先行 200 {job_id}；job 先 pe
   assert.equal(done.image_b64, Buffer.from(pngBytes).toString('base64'));
   assert.equal(done.counted, true);
   assert.equal(done.remaining, DAILY_LIMIT - 1);
-  assert.equal(kv.store.get(RLK), '1', 'quota 成功后 +1');
-  assert.deepEqual(kv.deletes, [imgKey(j.job_id)], '终态后删 img 载荷');
-  assert.equal(inst.st.deleteAllCount, 1, '终态后 DO storage 清空');
+  assert.equal(kv.store.get(RLK), '1', 'quota +1 after success');
+  assert.deepEqual(kv.deletes, [imgKey(j.job_id)], 'img payload deleted after the terminal state');
+  assert.equal(inst.st.deleteAllCount, 1, 'DO storage cleared after the terminal state');
   const dr = await getResult({ BOTU_RL: kv.binding }, '?job=' + j.job_id);
   const dj = await dr.json();
   assert.equal(dj.state, 'done');
   assert.equal(dj.image_base64, done.image_b64);
   assert.equal(dj.remaining, DAILY_LIMIT - 1);
-  assert.equal('counted' in dj, false, 'counted 标记不出响应');
+  assert.equal('counted' in dj, false, 'the counted flag never appears in the response');
 });
 
-test('POST：job put 与 img put 均带 TTL 3600，值为 JSON（img 含 image_base64/mime）', async () => {
+test('POST: both the job put and the img put carry TTL 3600, values are JSON (img contains image_base64/mime)', async () => {
   const { kv, env } = envWith();
   const res = await post(env);
   const { job_id } = await res.json();
@@ -221,37 +221,37 @@ test('POST：job put 与 img put 均带 TTL 3600，值为 JSON（img 含 image_b
   const imgVal = JSON.parse(imgPut.v);
   assert.equal(imgVal.image_base64, B64);
   assert.equal(imgVal.mime, 'image/png');
-  // 写入顺序：job pending 在前、img 在后（stub.fetch 最后；失败语义见 dispatch 500 分支测试）
+  // Write order: job pending first, img second (stub.fetch last; failure semantics are covered by the dispatch-500 branch test)
   assert.ok(kv.puts.indexOf(jobPut) < kv.puts.indexOf(imgPut));
 });
 
-// SPEC-435 v5 回归：慢上游（1500ms 模拟生产 2-4min）不得阻塞 POST 响应 — 生成在 DO alarm 内，
-// 既不受 waitUntil 30s 取消（v4 死因），也不占请求壁钟（v3 524 死因）
-test('POST + 慢上游(1500ms)：响应先行 <800ms，alarm 回调后才 done（524/30s 根因回归）', async () => {
+// SPEC-435 v5 regression: a slow upstream (1500ms standing in for the production 2-4min) must not block the POST response — generation runs inside the DO alarm,
+// immune both to the waitUntil 30s cancellation (v4's cause of death) and to request wall-clock time (v3's 524 cause of death)
+test('POST + slow upstream (1500ms): response first in <800ms, done only after the alarm callback (524/30s root-cause regression)', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: slowFetch(1500) });
   const t0 = Date.now();
   const res = await post(env);
   const elapsed = Date.now() - t0;
   const bodyText = await res.text();
-  scanNoLeak(bodyText, 'v5 POST 响应');
-  assert.ok(elapsed < 800, `响应先行：elapsed=${elapsed}ms 应 <800ms（生成在 alarm 内，不占请求）`);
+  scanNoLeak(bodyText, 'v5 POST response');
+  assert.ok(elapsed < 800, `response first: elapsed=${elapsed}ms should be <800ms (generation runs inside the alarm, not on the request)`);
   assert.equal(res.status, 200);
   const j = JSON.parse(bodyText);
   assert.deepEqual(Object.keys(j), ['job_id']);
   assert.match(j.job_id, /^[0-9a-f]{32}$/);
-  // alarm 未回调：result 回 pending
+  // Alarm not yet invoked: result returns pending
   const pr = await getResult({ BOTU_RL: kv.binding }, '?job=' + j.job_id);
   assert.deepEqual(await pr.json(), { state: 'pending' });
-  // alarm 回调（慢上游在 handler 内跑完）→ done，quota 恰好一次
+  // Alarm callback (the slow upstream completes inside the handler) → done, quota exactly once
   await doMock.alarm(`job-${j.job_id}`);
   const done = await jobRead({ BOTU_RL: kv.binding }, j.job_id);
   assert.equal(done.state, 'done');
   assert.equal(done.counted, true);
-  assert.equal(kv.store.get(RLK), '1', 'rl 计数恰好 1');
+  assert.equal(kv.store.get(RLK), '1', 'rl count is exactly 1');
 });
 
-// ── POST：校验 / quota 分支语义不变 ─────────────
-test('POST 非法 JSON → 400；非白名单 mime → 400：均不建 job 不打上游', async () => {
+// ── POST: validation / quota branch semantics unchanged ─────────────
+test('POST invalid JSON → 400; non-whitelisted mime → 400: neither creates a job nor calls the upstream', async () => {
   const kv = mockKV();
   let fetched = 0;
   const env = { LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY, BOTU_RL: kv.binding, __fetch: async () => { fetched += 1; return new Response('x'); } };
@@ -263,7 +263,7 @@ test('POST 非法 JSON → 400；非白名单 mime → 400：均不建 job 不�
   assert.equal(kv.puts.length, 0);
 });
 
-test('POST quota 超限 → 429 {error, remaining:0}：不建 job 不打上游', async () => {
+test('POST quota exceeded → 429 {error, remaining:0}: no job created, no upstream call', async () => {
   const kv = mockKV({ [RLK]: '5' });
   let fetched = 0;
   const res = await post({
@@ -278,7 +278,7 @@ test('POST quota 超限 → 429 {error, remaining:0}：不建 job 不打上游',
   assert.equal(kv.puts.length, 0);
 });
 
-test('POST 无 KV binding → 500 job store unavailable，不打上游（quota 仍 fail-open）', async () => {
+test('POST without a KV binding → 500 job store unavailable, no upstream call (quota still fails open)', async () => {
   let fetched = 0;
   const res = await post({
     LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY,
@@ -289,12 +289,12 @@ test('POST 无 KV binding → 500 job store unavailable，不打上游（quota �
   assert.equal(fetched, 0);
 });
 
-test('GET /api/generate → 405（语义不变）', async () => {
+test('GET /api/generate → 405 (semantics unchanged)', async () => {
   assert.equal((await onRequestGet()).status, 405);
 });
 
-// ── GET /api/result：四分支 + 异常路径 ────────────
-test('result 404：未知 id / 缺参 / 非法 id / 损坏值', async () => {
+// ── GET /api/result: four branches + fault paths ────────────
+test('result 404: unknown id / missing param / malformed id / corrupt value', async () => {
   const kv = mockKV({ [jobKey('ff'.repeat(16))]: 'not-json{{{' });
   const env = { BOTU_RL: kv.binding };
   const unknown = await getResult(env, '?job=' + 'ab'.repeat(16));
@@ -311,7 +311,7 @@ test('result 404：未知 id / 缺参 / 非法 id / 损坏值', async () => {
   assert.equal((await corrupt.json()).error, 'job not found or expired');
 });
 
-test('result：KV get 抛异常 → 500（与 404 区分）；非 GET → 405', async () => {
+test('result: KV get throws → 500 (distinct from 404); non-GET → 405', async () => {
   const bad = { get: async () => { throw new Error('kv down'); } };
   const r = await getResult({ BOTU_RL: bad }, '?job=' + 'ab'.repeat(16));
   assert.equal(r.status, 500);
@@ -320,7 +320,7 @@ test('result：KV get 抛异常 → 500（与 404 区分）；非 GET → 405', 
   assert.equal(m.status, 405);
 });
 
-test('result done/error 分支形状（直塞 KV 值）', async () => {
+test('result done/error branch shapes (KV values seeded directly)', async () => {
   const id = 'cd'.repeat(16);
   const kv = mockKV({
     [jobKey(id)]: JSON.stringify({ state: 'done', image_b64: B64, mime: 'image/png', remaining: 3, counted: true, ip: IP }),
@@ -333,13 +333,13 @@ test('result done/error 分支形状（直塞 KV 值）', async () => {
   assert.deepEqual(await e.json(), { state: 'error', error: 'upstream 500: [redacted]' });
 });
 
-// ── quota 恰好一次 / error 不扣 ─────────────────
-test('quota 恰好一次：done 后重复 poll 计数不涨（幂等）', async () => {
+// ── exactly-once quota / errors not charged ─────────────────
+test('quota exactly once: repeated polls after done never raise the count (idempotent)', async () => {
   const { kv, env, doMock } = envWith({ kvInitial: { [RLK]: '2' } });
   const res = await post(env);
   const { job_id } = await res.json();
   await doMock.alarm(`job-${job_id}`);
-  assert.equal(kv.store.get(RLK), '3', '成功 +1');
+  assert.equal(kv.store.get(RLK), '3', '+1 on success');
   const rlPutsBefore = kv.puts.filter((x) => x.k === RLK).length;
   for (let i = 0; i < 3; i += 1) {
     const r = await getResult({ BOTU_RL: kv.binding }, '?job=' + job_id);
@@ -347,11 +347,11 @@ test('quota 恰好一次：done 后重复 poll 计数不涨（幂等）', async 
     assert.equal(j.state, 'done');
     assert.equal(j.remaining, DAILY_LIMIT - 3);
   }
-  assert.equal(kv.store.get(RLK), '3', '重复 poll 不再涨');
-  assert.equal(kv.puts.filter((x) => x.k === RLK).length, rlPutsBefore, '无额外 rl 写');
+  assert.equal(kv.store.get(RLK), '3', 'repeated polls do not raise it further');
+  assert.equal(kv.puts.filter((x) => x.k === RLK).length, rlPutsBefore, 'no extra rl writes');
 });
 
-test('error 不扣：上游失败 → alarm 写 job error（已脱敏），rl 计数不变', async () => {
+test('errors not charged: upstream failure → the alarm writes a job error (sanitized), the rl count is unchanged', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: dirtyFetch, kvInitial: { [RLK]: '1' } });
   const res = await post(env);
   const { job_id } = await res.json();
@@ -360,26 +360,26 @@ test('error 不扣：上游失败 → alarm 写 job error（已脱敏），rl �
   assert.equal(job.state, 'error');
   scanNoLeak(job.error, 'job.error');
   assert.match(job.error, /upstream 500/);
-  assert.equal(kv.store.get(RLK), '1', '不扣');
+  assert.equal(kv.store.get(RLK), '1', 'not charged');
   assert.equal(kv.puts.filter((x) => x.k === RLK).length, 0);
   const r = await getResult({ BOTU_RL: kv.binding }, '?job=' + job_id);
   assert.equal(r.status, 200);
   const body = await r.text();
-  scanNoLeak(body, 'result error 响应');
+  scanNoLeak(body, 'result error response');
 });
 
-// ── 泄漏扇面扫描 ─────────────────────────────
-test('泄漏扫描：脏上游 v5 全链路（POST 响应 + alarm 终态 + job 值 + result 响应）无禁词；result.js/worker 源码无禁词', async () => {
+// ── leak surface scan ─────────────────────────────
+test('leak scan: dirty-upstream v5 full chain (POST response + alarm terminal state + job values + result response) has no forbidden tokens; result.js/worker sources have none either', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: dirtyFetch });
   const bodies = [];
-  // 脏失败链路（POST → alarm → error 终态 → result）
+  // Dirty failure chain (POST → alarm → error terminal state → result)
   const r1 = await post(env);
   bodies.push(await r1.text());
   const j1 = JSON.parse(bodies[0]);
   await doMock.alarm(`job-${j1.job_id}`);
   const r2 = await getResult({ BOTU_RL: kv.binding }, '?job=' + j1.job_id);
   bodies.push(await r2.text());
-  // 成功链路（OSS 签名 URL 存在于 mock 中，不得外泄）
+  // Success chain (an OSS signed URL exists in the mock and must never leak)
   const ok = envWith({ fetchMock: okFetch });
   const r3 = await post(ok.env);
   bodies.push(await r3.text());
@@ -387,86 +387,86 @@ test('泄漏扫描：脏上游 v5 全链路（POST 响应 + alarm 终态 + job �
   await ok.doMock.alarm(`job-${j3.job_id}`);
   const r4 = await getResult({ BOTU_RL: ok.kv.binding }, '?job=' + j3.job_id);
   bodies.push(await r4.text());
-  // 404/405 分支
+  // 404/405 branches
   bodies.push(await (await getResult({ BOTU_RL: kv.binding }, '?job=' + 'ab'.repeat(16))).text());
   bodies.push(await (await getResult({ BOTU_RL: kv.binding }, '', 'POST')).text());
-  // 全部 KV job 值（两套链路）
+  // All KV job values (both chains)
   for (const [k, v] of kv.store.entries()) if (k.startsWith('job:')) bodies.push(v);
   for (const [k, v] of ok.kv.store.entries()) if (k.startsWith('job:')) bodies.push(v);
-  for (const b of bodies) scanNoLeak(b, '响应/job 值');
-  assert.ok(!bodies.some((b) => b.includes('sig=1')), '签名 URL 片段不外泄');
-  // result.js / worker 源码自身无禁词（lib/jobcore.js 含 sanitizeError 禁词正则与网关路径常量，属功能必需，另行备注）
+  for (const b of bodies) scanNoLeak(b, 'response/job value');
+  assert.ok(!bodies.some((b) => b.includes('sig=1')), 'the signed-URL fragment never leaks');
+  // The result.js / worker sources themselves contain no forbidden tokens (lib/jobcore.js holds the sanitizeError forbidden-token regexes and the gateway path constant — functionally required, noted separately)
   const rsrc = readFileSync(join(ROOT, 'functions/api/result.js'), 'utf8');
-  scanNoLeak(rsrc, 'result.js 源码');
+  scanNoLeak(rsrc, 'result.js source');
   const wsrc = readFileSync(join(ROOT, 'worker/src/index.js'), 'utf8');
-  scanNoLeak(wsrc, 'worker 源码');
+  scanNoLeak(wsrc, 'worker source');
 });
 
-// ── SPEC-435/T-736 v5：DO JobRunner 执行体单测 ──────────────────
-test('alarm 幂等 guard：job 已终态(done) → 短路收尾，不打上游不双扣', async () => {
+// ── SPEC-435/T-736 v5: DO JobRunner executor unit tests ──────────────────
+test('alarm idempotency guard: job already terminal (done) → short-circuit cleanup, no upstream call, no double charge', async () => {
   let fetched = 0;
   const counting = async (url) => { fetched += 1; return okFetch(url); };
   const { kv, env, doMock } = envWith({ fetchMock: counting });
   const res = await post(env);
   const { job_id } = await res.json();
   await doMock.alarm(`job-${job_id}`);
-  assert.equal(kv.store.get(RLK), '1', '首次 alarm 成功扣费一次');
+  assert.equal(kv.store.get(RLK), '1', 'the first alarm charges exactly once');
   const callsAfterFirst = fetched;
-  assert.equal(callsAfterFirst, 2, '上游+下图共 2 次 fetch');
-  // 平台 at-least-once 重投：重新塞 meta 后再跑 alarm → guard 短路
+  assert.equal(callsAfterFirst, 2, '2 fetches total: upstream + image download');
+  // Platform at-least-once redelivery: re-seed meta and run the alarm again → the guard short-circuits
   const inst = doMock.inst(`job-${job_id}`);
   await inst.st.storage.put('job', { jobId: job_id, ip: IP });
   await doMock.alarm(`job-${job_id}`);
-  assert.equal(fetched, callsAfterFirst, '终态短路：不打上游');
-  assert.equal(kv.store.get(RLK), '1', '不双扣');
+  assert.equal(fetched, callsAfterFirst, 'terminal short-circuit: no upstream call');
+  assert.equal(kv.store.get(RLK), '1', 'no double charge');
   const job = await jobRead({ BOTU_RL: kv.binding }, job_id);
-  assert.equal(job.state, 'done', '终态不被改写');
+  assert.equal(job.state, 'done', 'the terminal state is not overwritten');
 });
 
-test('attempts 上限：≥MAX_JOB_ATTEMPTS → error 终态停止重试，不打上游不扣', async () => {
+test('attempts cap: ≥MAX_JOB_ATTEMPTS → error terminal state stops retries, no upstream call, no charge', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: okFetch });
   const res = await post(env);
   const { job_id } = await res.json();
   const inst = doMock.inst(`job-${job_id}`);
-  // 模拟前两次 alarm 中途崩溃（未写终态），平台第三次重投
+  // Simulate the first two alarms crashing mid-way (no terminal state written); the platform redelivers a third time
   await inst.st.storage.put('attempts', MAX_JOB_ATTEMPTS - 1);
   let fetched = 0;
   env.__fetch = async (url) => { fetched += 1; return okFetch(url); };
   await doMock.alarm(`job-${job_id}`);
-  assert.equal(fetched, 0, 'attempts 到顶：不再生成');
+  assert.equal(fetched, 0, 'attempts exhausted: no further generation');
   const job = await jobRead({ BOTU_RL: kv.binding }, job_id);
   assert.equal(job.state, 'error');
   assert.equal(job.error, 'generation failed after retries');
-  scanNoLeak(job.error, 'attempts error 文本');
-  assert.equal(kv.store.has(RLK), false, '不扣');
-  assert.equal(kv.deletes.includes(imgKey(job_id)), true, 'img 清理');
-  assert.equal(inst.st.data.size, 0, 'storage 清空');
+  scanNoLeak(job.error, 'attempts error text');
+  assert.equal(kv.store.has(RLK), false, 'not charged');
+  assert.equal(kv.deletes.includes(imgKey(job_id)), true, 'img cleaned up');
+  assert.equal(inst.st.data.size, 0, 'storage cleared');
 });
 
-test('5min 硬超时：abort → error 终态 generation timed out，不扣', async () => {
+test('5min hard timeout: abort → error terminal state "generation timed out", not charged', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: slowFetch(400) });
-  env.__JOB_HARD_TIMEOUT_MS = 30; // 单测 ms 级缩放；生产默认 JOB_HARD_TIMEOUT_MS=300000
+  env.__JOB_HARD_TIMEOUT_MS = 30; // ms-scale for unit tests; production default is JOB_HARD_TIMEOUT_MS=300000
   const res = await post(env);
   const { job_id } = await res.json();
   await doMock.alarm(`job-${job_id}`);
   const job = await jobRead({ BOTU_RL: kv.binding }, job_id);
   assert.equal(job.state, 'error');
   assert.equal(job.error, TIMEOUT_ERROR);
-  scanNoLeak(job.error, 'timeout error 文本');
-  assert.equal(kv.store.has(RLK), false, '超时不扣');
+  scanNoLeak(job.error, 'timeout error text');
+  assert.equal(kv.store.has(RLK), false, 'a timeout is not charged');
   const r = await getResult({ BOTU_RL: kv.binding }, '?job=' + job_id);
   const body = await r.text();
-  scanNoLeak(body, 'timeout result 响应');
+  scanNoLeak(body, 'timeout result response');
   assert.equal(JSON.parse(body).state, 'error');
 });
 
-test('img 缺失（TTL 过期）：alarm 写 job input expired 终态，不打上游不扣', async () => {
+test('img missing (TTL expired): the alarm writes the "job input expired" terminal state, no upstream call, no charge', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: okFetch });
   const res = await post(env);
   const { job_id } = await res.json();
   let fetched = 0;
   env.__fetch = async (url) => { fetched += 1; return okFetch(url); };
-  kv.store.delete(imgKey(job_id)); // 模拟 1h TTL 过期
+  kv.store.delete(imgKey(job_id)); // simulate the 1h TTL expiring
   await doMock.alarm(`job-${job_id}`);
   assert.equal(fetched, 0);
   const job = await jobRead({ BOTU_RL: kv.binding }, job_id);
@@ -475,47 +475,47 @@ test('img 缺失（TTL 过期）：alarm 写 job input expired 终态，不打�
   assert.equal(kv.store.has(RLK), false);
 });
 
-test('error 终态同样删 img 载荷（失败链路不残留大图）', async () => {
+test('the error terminal state also deletes the img payload (the failure chain leaves no large image behind)', async () => {
   const { kv, env, doMock } = envWith({ fetchMock: dirtyFetch });
   const res = await post(env);
   const { job_id } = await res.json();
   assert.equal(kv.store.has(imgKey(job_id)), true);
   await doMock.alarm(`job-${job_id}`);
-  assert.equal(kv.store.has(imgKey(job_id)), false, 'error 终态后 img 已删');
+  assert.equal(kv.store.has(imgKey(job_id)), false, 'img deleted after the error terminal state');
   assert.deepEqual(kv.deletes, [imgKey(job_id)]);
 });
 
-test('dispatch 失败：binding 缺失 / stub.fetch 抛异常 / 非 2xx → 500，job 留 pending 不扣', async () => {
-  // binding 缺失
+test('dispatch failures: missing binding / stub.fetch throws / non-2xx → 500, the job stays pending, not charged', async () => {
+  // Missing binding
   const a = envWith();
   delete a.env.JOB_RUNNER;
   const r1 = await post(a.env);
   assert.equal(r1.status, 500);
   assert.equal((await r1.json()).error, 'job dispatch unavailable');
-  // stub.fetch 抛异常
+  // stub.fetch throws
   const b = envWith();
   b.env.JOB_RUNNER = { idFromName: (n) => ({ n }), get: () => ({ fetch: async () => { throw new Error('do unreachable'); } }) };
   const r2 = await post(b.env);
   assert.equal(r2.status, 500);
   assert.equal((await r2.json()).error, 'job dispatch unavailable');
-  // 非 2xx
+  // Non-2xx
   const c = envWith();
   c.env.JOB_RUNNER = { idFromName: (n) => ({ n }), get: () => ({ fetch: async () => new Response('x', { status: 503 }) }) };
   const r3 = await post(c.env);
   assert.equal(r3.status, 500);
   assert.equal((await r3.json()).error, 'job dispatch unavailable');
-  // job 记录已落 pending（500 不回滚 KV；TTL 1h 兜底清理），不扣费
+  // The job record is already pending (a 500 does not roll back KV; the 1h TTL cleans up), no charge
   assert.equal(a.kv.store.get(RLK), undefined);
   for (const [k, v] of a.kv.store.entries()) if (k.startsWith('job:')) assert.equal(JSON.parse(v).state, 'pending');
 });
 
-test('JobRunner.fetch：非法 job id → 400 不 setAlarm；合法 → 204 + meta + setAlarm 立即', async () => {
+test('JobRunner.fetch: invalid job id → 400 without setAlarm; valid → 204 + meta + immediate setAlarm', async () => {
   const { env, doMock } = envWith();
   const badName = 'job-' + newJobId();
   const badStub = doMock.binding.get(doMock.binding.idFromName(badName));
   const bad = await badStub.fetch('https://job.internal/run', { headers: { 'x-botu-job': 'not-hex!!' } });
   assert.equal(bad.status, 400);
-  assert.equal(doMock.inst(badName).st.alarmAt, null, '非法 id 不 setAlarm');
+  assert.equal(doMock.inst(badName).st.alarmAt, null, 'an invalid id does not setAlarm');
   const jobId = newJobId();
   const name = `job-${jobId}`;
   const stub = doMock.binding.get(doMock.binding.idFromName(name));
@@ -525,21 +525,21 @@ test('JobRunner.fetch：非法 job id → 400 不 setAlarm；合法 → 204 + me
   const meta = inst.st.data.get('job');
   assert.equal(meta.jobId, jobId);
   assert.equal(meta.ip, IP);
-  assert.ok(Math.abs(inst.st.alarmAt - Date.now()) < 5000, 'setAlarm 立即');
+  assert.ok(Math.abs(inst.st.alarmAt - Date.now()) < 5000, 'setAlarm immediate');
 });
 
-test('meta 缺失：alarm 直接清空 storage 安全返回（不抛不写 KV）', async () => {
+test('meta missing: the alarm clears storage and returns safely (no throw, no KV writes)', async () => {
   const { kv, env, doMock } = envWith();
   const name = `job-${newJobId()}`;
-  doMock.binding.get(doMock.binding.idFromName(name)); // 实例化但不塞 meta
+  doMock.binding.get(doMock.binding.idFromName(name)); // instantiate but do not seed meta
   await doMock.alarm(name);
   assert.equal(doMock.inst(name).st.deleteAllCount, 1);
-  assert.equal(kv.puts.length, 0, '无 KV 写');
+  assert.equal(kv.puts.length, 0, 'no KV writes');
 });
 
-test('worker 健康入口：default.fetch → 200', async () => {
+test('worker health entry: default.fetch → 200', async () => {
   const mod = await import('../worker/src/index.js');
   const res = await mod.default.fetch(new Request('https://x/'));
   assert.equal(res.status, 200);
-  scanNoLeak(await res.text(), 'worker 健康响应');
+  scanNoLeak(await res.text(), 'worker health response');
 });

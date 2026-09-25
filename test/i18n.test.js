@@ -1,18 +1,18 @@
-// test/i18n.test.js — zh/en 字典键集一致 + 关键键在场
+// test/i18n.test.js — zh/en dictionaries share the same key set + essential keys present
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DICT, detectLang, applyLang } from '../js/i18n.js';
 
-test('DICT 含 zh 与 en', () => {
+test('DICT contains zh and en', () => {
   assert.ok(DICT.zh && typeof DICT.zh === 'object');
   assert.ok(DICT.en && typeof DICT.en === 'object');
 });
 
-test('zh/en 键集完全一致', () => {
+test('zh/en key sets are identical', () => {
   assert.deepEqual(Object.keys(DICT.zh).sort(), Object.keys(DICT.en).sort());
 });
 
-test('除 loadingHints 数组外全部为非空字符串', () => {
+test('every value is a non-empty string except the loadingHints array', () => {
   for (const lang of ['zh', 'en']) {
     for (const [k, v] of Object.entries(DICT[lang])) {
       if (k === 'loadingHints') {
@@ -26,7 +26,7 @@ test('除 loadingHints 数组外全部为非空字符串', () => {
   assert.equal(DICT.zh.loadingHints.length, DICT.en.loadingHints.length);
 });
 
-test('关键键在场（SEO/UI/错误/画廊/footer）', () => {
+test('essential keys present (SEO/UI/errors/gallery/footer)', () => {
   for (const k of ['seoTitle', 'appTitle', 'langBtn', 'tagline', 'dropTitle', 'dropHint',
     'beforeLabel', 'afterLabel', 'idleHint', 'generate', 'regenerate', 'download', 'newImage',
     'fileMetaFmt', 'errRead', 'errType', 'err400', 'err413', 'err500',
@@ -39,7 +39,7 @@ test('关键键在场（SEO/UI/错误/画廊/footer）', () => {
   }
 });
 
-test('SPEC-431 新键格式：quota/err429 占位符齐全，theme aria 非空', () => {
+test('SPEC-431 new-key formats: quota/err429 placeholders complete, theme aria non-empty', () => {
   for (const lang of ['zh', 'en']) {
     assert.match(DICT[lang].quotaFmt, /\{n\}/, `${lang}.quotaFmt {n}`);
     assert.match(DICT[lang].quotaFmt, /\{max\}/, `${lang}.quotaFmt {max}`);
@@ -50,13 +50,13 @@ test('SPEC-431 新键格式：quota/err429 占位符齐全，theme aria 非空',
   }
 });
 
-test('seoTitle 双语均含关键词', () => {
+test('seoTitle contains the keywords in both languages', () => {
   assert.match(DICT.zh.seoTitle, /bot icon/i);
   assert.match(DICT.zh.seoTitle, /机器人图标/);
   assert.match(DICT.en.seoTitle, /bot icon/i);
 });
 
-test('detectLang/applyLang 在 node 下可调用（DOM guard 不抛错）', () => {
+test('detectLang/applyLang are callable under node (the DOM guards do not throw)', () => {
   assert.equal(typeof detectLang, 'function');
   assert.equal(typeof applyLang, 'function');
   const lang = detectLang();

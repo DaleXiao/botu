@@ -1,4 +1,4 @@
-// test/generate.test.js — functions/api/generate.js 单测（env.__fetch mock）
+// test/generate.test.js — unit tests for functions/api/generate.js (env.__fetch mock)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -10,11 +10,11 @@ import { JobRunner } from '../worker/src/index.js';
 
 const B64 = 'aGVsbG8=';
 const TEST_KEY = ['test', '_key'].join('');
-// Gateway 收敛（Dale 2026-09-22 19:42）：mock api-llm gateway 源（env.LLM_GATEWAY_URL + UPSTREAM_PATH）
+// Gateway consolidation (Dale 2026-09-22 19:42): mocked api-llm gateway origin (env.LLM_GATEWAY_URL + UPSTREAM_PATH)
 const GW = 'https://gw.test';
 const GW_URL = GW + UPSTREAM_PATH;
 
-// SPEC-433: KV stub（内存 Map），job 流测试用
+// SPEC-433: KV stub (in-memory Map) for the job-flow tests
 function mockKV(initial) {
   const store = new Map(Object.entries(initial || {}));
   const puts = [];
@@ -38,7 +38,7 @@ const post = (payload, env, rawBody) =>
     env,
   });
 
-// SPEC-435 v5：DO 触发链 mock（stub.fetch 直连真实 JobRunner；alarm 手动驱动）
+// SPEC-435 v5: DO trigger-chain mock (stub.fetch talks directly to a real JobRunner; alarm driven manually)
 function mockDO(env) {
   const instances = new Map();
   const binding = {
@@ -70,7 +70,7 @@ const okUpstream = {
   output: { choices: [{ message: { content: [{ text: 'done' }, { image: 'https://oss.example/gen.png?sig=9' }] } }] },
 };
 
-test('validateInput: 白名单 mime 全通过', () => {
+test('validateInput: all whitelisted mimes pass', () => {
   for (const mime of ['image/jpeg', 'image/png', 'image/webp']) {
     const r = validateInput({ image_base64: B64, mime });
     assert.equal(r.ok, true, mime);
@@ -78,7 +78,7 @@ test('validateInput: 白名单 mime 全通过', () => {
   }
 });
 
-test('validateInput: 非白名单 mime -> 400', () => {
+test('validateInput: non-whitelisted mime -> 400', () => {
   for (const mime of ['image/gif', 'image/svg+xml', 'application/octet-stream', '', undefined, null]) {
     const r = validateInput({ image_base64: B64, mime });
     assert.equal(r.ok, false, String(mime));
@@ -86,7 +86,7 @@ test('validateInput: 非白名单 mime -> 400', () => {
   }
 });
 
-test('validateInput: base64 缺失/空/非对象 -> 400', () => {
+test('validateInput: base64 missing/empty/non-object -> 400', () => {
   assert.equal(validateInput({ mime: 'image/png' }).status, 400);
   assert.equal(validateInput({ image_base64: '', mime: 'image/png' }).status, 400);
   assert.equal(validateInput({ image_base64: 42, mime: 'image/png' }).status, 400);
@@ -94,13 +94,13 @@ test('validateInput: base64 缺失/空/非对象 -> 400', () => {
   assert.equal(validateInput('str').ok, false);
 });
 
-test('validateInput: base64 超 14M -> 413，恰好 14M 通过', () => {
+test('validateInput: base64 over 14M -> 413, exactly 14M passes', () => {
   const r = validateInput({ image_base64: 'a'.repeat(MAX_B64_LEN + 1), mime: 'image/jpeg' });
   assert.equal(r.status, 413);
   assert.equal(validateInput({ image_base64: 'a'.repeat(MAX_B64_LEN), mime: 'image/jpeg' }).ok, true);
 });
 
-test('buildBody: DashScope 契约形状', () => {
+test('buildBody: DashScope contract shape', () => {
   const b = buildBody('QUJD', 'image/jpeg');
   assert.equal(b.model, MODEL);
   assert.equal(MODEL, 'qwen-image-3.0-pro');
@@ -111,7 +111,7 @@ test('buildBody: DashScope 契约形状', () => {
   assert.equal(b.parameters.size, '1024*1024');
 });
 
-test('extractImage: 取 OSS 签名 URL / 缺失畸形返回 null', () => {
+test('extractImage: extracts the OSS signed URL / missing or malformed returns null', () => {
   assert.equal(extractImage(okUpstream), 'https://oss.example/gen.png?sig=9');
   assert.equal(extractImage({ output: { choices: [{ message: { content: [{ text: 'x' }] } }] } }), null);
   assert.equal(extractImage({ output: {} }), null);
@@ -119,17 +119,17 @@ test('extractImage: 取 OSS 签名 URL / 缺失畸形返回 null', () => {
   assert.equal(extractImage(null), null);
 });
 
-test('bufToBase64: 与 Buffer.toString(base64) 一致', () => {
+test('bufToBase64: matches Buffer.toString(base64)', () => {
   const bytes = new Uint8Array([137, 80, 78, 71, 0, 255, 3]);
   assert.equal(bufToBase64(bytes.buffer), Buffer.from(bytes).toString('base64'));
 });
 
-test('onRequestPost: 非法 JSON -> 400', async () => {
+test('onRequestPost: invalid JSON -> 400', async () => {
   const res = await post(null, { LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY }, 'not-json{');
   assert.equal(res.status, 400);
 });
 
-test('onRequestPost: 非白名单 mime -> 400 且不打上游', async () => {
+test('onRequestPost: non-whitelisted mime -> 400 without calling the upstream', async () => {
   let called = 0;
   const res = await post({ image_base64: B64, mime: 'image/gif' }, {
     LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY,
@@ -139,14 +139,14 @@ test('onRequestPost: 非白名单 mime -> 400 且不打上游', async () => {
   assert.equal(called, 0);
 });
 
-test('onRequestPost: 缺 LLM_GATEWAY_URL -> 500', async () => {
+test('onRequestPost: missing LLM_GATEWAY_URL -> 500', async () => {
   const res = await post({ image_base64: B64, mime: 'image/png' }, {});
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /LLM_GATEWAY_URL/);
 });
 
-// ── SPEC-433 job 流：runGeneration 纯管线 + POST 立即返回 {job_id} ──
-test('runGeneration: 上游非 200 -> {ok:false,502} 带截断错误体', async () => {
+// ── SPEC-433 job flow: runGeneration pure pipeline + POST returns {job_id} immediately ──
+test('runGeneration: upstream non-200 -> {ok:false,502} with a truncated error body', async () => {
   const r = await runGeneration({
     LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY,
     __fetch: async () => new Response('RATE_LIMITED'.repeat(200), { status: 429 }),
@@ -157,7 +157,7 @@ test('runGeneration: 上游非 200 -> {ok:false,502} 带截断错误体', async 
   assert.ok(r.error.length < 500, 'error body truncated');
 });
 
-test('runGeneration: 上游 fetch 抛异常 -> {ok:false,502}', async () => {
+test('runGeneration: upstream fetch throws -> {ok:false,502}', async () => {
   const r = await runGeneration({
     LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY,
     __fetch: async () => { throw new Error('connect ETIMEDOUT'); },
@@ -166,7 +166,7 @@ test('runGeneration: 上游 fetch 抛异常 -> {ok:false,502}', async () => {
   assert.equal(r.status, 502);
 });
 
-test('runGeneration: 上游无 image -> {ok:false,502}，错误不带上游响应体', async () => {
+test('runGeneration: no image upstream -> {ok:false,502}, the error does not carry the upstream response body', async () => {
   const r = await runGeneration({
     LLM_GATEWAY_URL: GW, LLM_SERVICE_TOKEN: TEST_KEY,
     __fetch: async () => Response.json({ output: { leak: 'https://oss.example/leak.png' } }),
@@ -176,13 +176,13 @@ test('runGeneration: 上游无 image -> {ok:false,502}，错误不带上游响�
   assert.equal(r.error, 'no image in upstream response');
 });
 
-test('runGeneration: 缺 gateway 配置 -> {ok:false,500}', async () => {
+test('runGeneration: missing gateway config -> {ok:false,500}', async () => {
   const r = await runGeneration({ __fetch: async () => new Response('x') }, { image_base64: B64, mime: 'image/png' });
   assert.equal(r.ok, false);
   assert.equal(r.status, 500);
 });
 
-test('onRequestPost: happy path -> 200 {job_id}；alarm 后终态 done 含图；服务端下载 OSS', async () => {
+test('onRequestPost: happy path -> 200 {job_id}; terminal state done with image after the alarm; server-side OSS download', async () => {
   const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
   const calls = [];
   const mock = async (url, opts) => {
@@ -204,8 +204,8 @@ test('onRequestPost: happy path -> 200 {job_id}；alarm 后终态 done 含图；
   assert.equal(res.status, 200);
   const j = await res.json();
   assert.match(j.job_id, /^[0-9a-f]{32}$/);
-  assert.deepEqual(Object.keys(j), ['job_id']); // 响应只有 job_id，无图/上游元数据
-  assert.deepEqual(calls, [], 'POST 阶段不打上游（v5：生成在 DO alarm 内）');
+  assert.deepEqual(Object.keys(j), ['job_id']); // the response carries only job_id — no image / upstream metadata
+  assert.deepEqual(calls, [], 'no upstream call during the POST phase (v5: generation runs inside the DO alarm)');
   await doMock.alarm(`job-${j.job_id}`);
   assert.deepEqual(calls, [GW_URL, extractImage(okUpstream)]);
   const job = await jobRead({ BOTU_RL: kv.binding }, j.job_id);

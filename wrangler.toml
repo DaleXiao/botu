@@ -3,7 +3,7 @@ pages_build_output_dir = "."
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Gateway 指令（Dale 2026-09-22 19:42）：出图统一走 api-llm gateway（与 icon-forge 同值）
+# Gateway directive (Dale 2026-09-22 19:42): all image generation goes through the api-llm gateway (same value as icon-forge)
 [vars]
 LLM_GATEWAY_URL = "https://api-llm.openclawd.co"
 
@@ -11,9 +11,9 @@ LLM_GATEWAY_URL = "https://api-llm.openclawd.co"
 binding = "BOTU_RL"
 id = "5f93916e14d44bf687eaa1afc0ee336c"
 
-# SPEC-435/T-736 v5：DO 执行体在 companion worker botu-job-runner（Pages 不能承载 DO class；
-# Pages 侧 DO binding 必须带 script_name — 官方 wrangler-configuration 文档 2026-06-25）。
-# 其余键不动（不动区：KV id / compatibility / name）。
+# SPEC-435/T-736 v5: the DO executor lives in the companion worker botu-job-runner (Pages cannot host a DO class;
+# the Pages-side DO binding must carry script_name — official wrangler-configuration docs, 2026-06-25).
+# All other keys untouched (frozen zone: KV id / compatibility / name).
 [[durable_objects.bindings]]
 name = "JOB_RUNNER"
 class_name = "JobRunner"
